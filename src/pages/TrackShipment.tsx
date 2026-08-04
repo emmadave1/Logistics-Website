@@ -25,10 +25,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import Layout from '@/components/layout/Layout';
 import { Shipment, ShipmentStatus } from '@/types/shipment';
-import { trackShipment } from '@/services/mockApi';
-import { getRecentlyTracked, initializeDemoData, getShipmentByTrackingId } from '@/services/storage';
+import { trackShipment } from '@/services/api';
+import { getRecentlyTracked, removeRecentlyTracked } from '@/services/storage';
 import { validateTrackingId } from '@/utils/validators';
-import { getShipmentEvents, ShipmentEvent } from '@/services/notificationService';
 import { formatDate, formatDateTime, formatCountdown, formatWeight } from '@/utils/formatters';
 import { cn } from '@/lib/utils';
 
@@ -57,10 +56,6 @@ export default function TrackShipment() {
   const lastSnapshot = useRef<{ eta: string; status: ShipmentStatus } | null>(null);
 
   useEffect(() => {
-    initializeDemoData();
-  }, []);
-
-  useEffect(() => {
     const id = searchParams.get('id');
     if (id) {
       handleSearch(id);
@@ -78,109 +73,39 @@ export default function TrackShipment() {
     }
   }, [shipment]);
 
-  // Watch for admin updates (ETA changes / delivery) on the tracked shipment
-  useEffect(() => {
-    if (!shipment) {
-      lastSnapshot.current = null;
-      return;
-    }
-
-    lastSnapshot.current = { eta: shipment.estimatedDelivery, status: shipment.status };
-    const currentId = shipment.trackingId;
-    setEvents(getShipmentEvents(currentId));
-
-    const check = () => {
-      const latest = getShipmentByTrackingId(currentId);
-      const prev = lastSnapshot.current;
-      if (!latest || !prev) return;
-
-      const news: typeof notifications = [];
-
-      if (latest.estimatedDelivery !== prev.eta) {
-        news.push({
-          id: `eta-${Date.now()}`,
-          type: 'eta',
-          title: 'Delivery date & time updated',
-          description: `New estimated delivery: ${formatDateTime(latest.estimatedDelivery)}`,
-          at: new Date().toISOString(),
-        });
-      }
-
-      if (latest.status !== prev.status) {
-        news.push(
-          latest.status === 'delivered'
-            ? {
-                id: `delivered-${Date.now()}`,
-                type: 'delivered',
-                title: 'Shipment delivered',
-                description: `${latest.trackingId} was marked as delivered${
-                  latest.deliveredAt ? ` on ${formatDateTime(latest.deliveredAt)}` : ''
-                }.`,
-                at: new Date().toISOString(),
-              }
-            : {
-                id: `status-${Date.now()}`,
-                type: 'status',
-                title: 'Shipment status updated',
-                description: `Status is now "${statusConfig[latest.status]?.label ?? latest.status}".`,
-                at: new Date().toISOString(),
-              }
-        );
-      }
-
-      setEvents(getShipmentEvents(currentId));
-
-      if (news.length > 0) {
-        lastSnapshot.current = { eta: latest.estimatedDelivery, status: latest.status };
-        setShipment(latest);
-        setNotifications((current) => [...news, ...current].slice(0, 5));
-        news.forEach((n) =>
-          toast({
-            title: n.title,
-            description: n.description,
-          })
-        );
-      }
-    };
-
-    const interval = setInterval(check, 3000);
-    window.addEventListener('storage', check);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', check);
-    };
-  }, [shipment?.trackingId]);
-
 
   const handleSearch = async (id?: string) => {
     const searchId = id || trackingId;
-    const validation = validateTrackingId(searchId);
     
-    if (!validation.valid) {
-      setError(validation.error || t('tracking.invalidFormat'));
+    if (!searchId.trim()) {
+      setError('Please enter a tracking ID');
       return;
     }
 
     setIsLoading(true);
     setError('');
     setShipment(null);
-    setNotifications([]);
-    setEvents([]);
 
     try {
       const result = await trackShipment(searchId.toUpperCase());
       
       if (result.success && result.data) {
         setShipment(result.data);
+        // Add to recently tracked
+        getRecentlyTracked();
       } else {
-        setError(t('tracking.notFound'));
+        if (result.error === 'Shipment not found.') {
+          removeRecentlyTracked(searchId);
+        }
+        setError(result.error || 'Shipment not found');
       }
-    } catch {
+    } catch (err) {
       toast({
-        title: t('common.error'),
-        description: t('errors.generic'),
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to track shipment',
         variant: 'destructive',
       });
+      setError('Failed to load tracking information');
     } finally {
       setIsLoading(false);
     }

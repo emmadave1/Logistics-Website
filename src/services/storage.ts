@@ -66,6 +66,11 @@ export function addRecentlyTracked(tracked: TrackedShipment): void {
   localStorage.setItem(STORAGE_KEYS.TRACKED, JSON.stringify(recentlyTracked));
 }
 
+export function removeRecentlyTracked(trackingId: string): void {
+  const recentlyTracked = getRecentlyTracked().filter(t => t.trackingId !== trackingId);
+  localStorage.setItem(STORAGE_KEYS.TRACKED, JSON.stringify(recentlyTracked));
+}
+
 // Form draft
 export function getFormDraft(): Partial<ShipmentFormData> | null {
   try {

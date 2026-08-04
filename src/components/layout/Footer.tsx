@@ -15,7 +15,7 @@ export default function Footer() {
   const supportLinks = [
     { label: 'Help Center', path: '/help' },
     { label: t('common.contact'), path: '/contact' },
-    { label: t('footer.faq'), path: '/help' },
+    { label: t('footer.faq'), path: '/help', id: 'faq' },
   ];
 
   const legalLinks = [
@@ -81,8 +81,8 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold mb-4">{t('footer.support')}</h3>
             <ul className="space-y-3">
-              {supportLinks.map((link) => (
-                <li key={link.path}>
+              {supportLinks.map((link, idx) => (
+                <li key={link.id || `${link.path}-${idx}`}>
                   <Link
                     to={link.path}
                     className="text-sm text-muted-foreground hover:text-primary transition-colors"

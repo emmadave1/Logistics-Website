@@ -30,8 +30,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import Layout from '@/components/layout/Layout';
 import { ShipmentFormData, PackageCategory, Shipment } from '@/types/shipment';
-import { createShipment } from '@/services/mockApi';
-import { getFormDraft, saveFormDraft, clearFormDraft, getShipmentByTrackingId } from '@/services/storage';
+import { createShipment } from '@/services/api';
+import { getFormDraft, saveFormDraft, clearFormDraft } from '@/services/storage';
 import { formatDateTime } from '@/utils/formatters';
 import { cn } from '@/lib/utils';
 
@@ -140,6 +140,11 @@ export default function RequestTracking() {
       const result = await createShipment(formData);
       if (result.success && result.data) {
         setCreatedShipment(result.data);
+        addRecentlyTracked({
+          trackingId: result.data.trackingId,
+          status: result.data.status,
+          trackedAt: new Date().toISOString(),
+        });
         clearFormDraft();
         toast({
           title: 'Success!',
