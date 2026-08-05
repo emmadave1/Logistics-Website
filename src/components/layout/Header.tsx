@@ -138,11 +138,11 @@ export default function Header() {
             </Button>
 
             {/* Admin Link */}
-            <Link to="/admin">
+            {/* <Link to="/admin">
               <Button variant="outline" size="sm" className="hidden sm:flex">
                 {t('common.admin')}
               </Button>
-            </Link>
+            </Link> */}
 
             {/* Mobile Menu Toggle */}
             <Button
@@ -188,13 +188,13 @@ export default function Header() {
                    t('common.contact')}
                 </Link>
               ))}
-              <Link
+              {/* <Link
                 to="/admin"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted"
               >
                 {t('common.admin')}
-              </Link>
+              </Link> */}
             </nav>
           </motion.div>
         )}
