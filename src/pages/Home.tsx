@@ -13,7 +13,9 @@ import {
   CheckCircle,
   Star,
   ArrowRight,
+  Quote,
   Search
+
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,15 +23,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { validateTrackingId } from '@/utils/validators';
 import Layout from '@/components/layout/Layout';
-import {
-  PhoneMockup,
-  BookingScreen,
-  PickupScreen,
-  TrackingScreen,
-  DeliveredScreen,
-} from '@/components/home/PhoneMockup';
+import { HowItWorks } from '@/components/home/HowItWorks';
+import sarahImg from '@/assets/testimonial-sarah.jpg';
+import michaelImg from '@/assets/testimonial-michael.jpg';
+import emmaImg from '@/assets/testimonial-emma.jpg';
 
-const phoneScreens = [BookingScreen, PickupScreen, TrackingScreen, DeliveredScreen];
 
 const stats = [
   { value: '5,000+', label: 'deliveries', icon: Package },
@@ -65,22 +63,35 @@ const testimonials = [
   {
     name: 'Sarah Johnson',
     role: 'E-commerce Owner',
+    company: 'Nordvale Goods',
+    location: 'Chicago, USA',
+    image: sarahImg,
     content: 'Movemate has transformed our shipping operations. Fast, reliable, and their tracking is incredibly accurate.',
     rating: 5,
+    metric: '1,200+ parcels shipped',
   },
   {
     name: 'Michael Chen',
     role: 'Supply Chain Manager',
+    company: 'Kaito Industries',
+    location: 'Singapore',
+    image: michaelImg,
     content: 'The best logistics partner we have ever worked with. Their global network is impressive.',
     rating: 5,
+    metric: '18 lanes managed',
   },
   {
     name: 'Emma Williams',
     role: 'Small Business Owner',
+    company: 'The Linen Room',
+    location: 'London, UK',
+    image: emmaImg,
     content: 'Affordable rates without compromising on quality. Highly recommend for any business size.',
     rating: 5,
+    metric: '99.2% on-time rate',
   },
 ];
+
 
 const services = [
   {
@@ -348,53 +359,8 @@ export default function Home() {
       </section>
 
       {/* How It Works */}
-      <section className="py-20 bg-muted/30">
-        <div className="container-custom">
-          <div className="text-center mb-14">
-            <span className="inline-block rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary mb-4">
-              Built for mobile
-            </span>
-            <h2 className="text-3xl lg:text-4xl font-display font-bold mb-4">How It Works</h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              From booking to doorstep delivery in four transparent steps — exactly as your
-              customers see it on their phone.
-            </p>
-          </div>
+      <HowItWorks />
 
-          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
-            {processSteps.map((step, index) => {
-              const Screen = phoneScreens[index];
-              return (
-                <motion.div
-                  key={step.title}
-                  initial={{ opacity: 0, y: 28 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
-                  viewport={{ once: true }}
-                  className="relative flex flex-col items-center text-center"
-                >
-                  <div className="relative">
-                    <div className="absolute -inset-6 rounded-full bg-primary/10 blur-2xl" />
-                    <PhoneMockup className="relative">
-                      <Screen />
-                    </PhoneMockup>
-                    <span className="absolute -top-3 -left-2 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground shadow-lg">
-                      {index + 1}
-                    </span>
-                  </div>
-                  <div className="mt-6 max-w-[240px]">
-                    <div className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                      <step.icon className="h-4 w-4 text-primary" />
-                    </div>
-                    <h3 className="font-semibold mb-2">{step.title}</h3>
-                    <p className="text-sm text-muted-foreground">{step.description}</p>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
 
       {/* Service Commitments */}
       <section className="py-16 bg-muted/40">
@@ -430,23 +396,43 @@ export default function Home() {
                 transition={{ duration: 0.5, delay: index * 0.1 }}
                 viewport={{ once: true }}
               >
-                <Card className="h-full">
-                  <CardContent className="p-6">
+                <Card className="h-full card-hover relative overflow-hidden">
+                  <Quote className="absolute right-4 top-4 h-10 w-10 text-primary/10" />
+                  <CardContent className="p-6 flex h-full flex-col">
                     <div className="flex gap-1 mb-4">
                       {[...Array(testimonial.rating)].map((_, i) => (
                         <Star key={i} className="h-4 w-4 fill-warning text-warning" />
                       ))}
                     </div>
-                    <p className="text-muted-foreground mb-4">"{testimonial.content}"</p>
-                    <div>
-                      <p className="font-semibold">{testimonial.name}</p>
-                      <p className="text-sm text-muted-foreground">{testimonial.role}</p>
+                    <p className="text-muted-foreground mb-6 flex-1">"{testimonial.content}"</p>
+                    <div className="flex items-center gap-3 border-t border-border pt-4">
+                      <img
+                        src={testimonial.image}
+                        alt={`${testimonial.name}, ${testimonial.role} at ${testimonial.company}`}
+                        loading="lazy"
+                        width={512}
+                        height={512}
+                        className="h-12 w-12 rounded-full object-cover ring-2 ring-primary/20"
+                      />
+                      <div className="min-w-0">
+                        <p className="font-semibold truncate">{testimonial.name}</p>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {testimonial.role} · {testimonial.company}
+                        </p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                          <MapPin className="h-3 w-3" /> {testimonial.location}
+                        </p>
+                      </div>
                     </div>
+                    <p className="mt-3 inline-flex w-fit rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                      {testimonial.metric}
+                    </p>
                   </CardContent>
                 </Card>
               </motion.div>
             ))}
           </div>
+
         </div>
       </section>
 
