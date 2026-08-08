@@ -25,9 +25,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import Layout from '@/components/layout/Layout';
 import { Shipment, ShipmentStatus } from '@/types/shipment';
-import { trackShipment } from '@/services/api';
-import { getRecentlyTracked, removeRecentlyTracked } from '@/services/storage';
+import { trackShipment } from '@/services/mockApi';
+import { getRecentlyTracked, initializeDemoData, getShipmentByTrackingId } from '@/services/storage';
 import { validateTrackingId } from '@/utils/validators';
+import { getShipmentEvents, ShipmentEvent } from '@/services/notificationService';
+import { ShipmentMap } from '@/components/tracking/ShipmentMap';
 import { formatDate, formatDateTime, formatCountdown, formatWeight } from '@/utils/formatters';
 import { cn } from '@/lib/utils';
 
@@ -50,10 +52,14 @@ export default function TrackShipment() {
   const [error, setError] = useState('');
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, isOverdue: false });
   const [notifications, setNotifications] = useState<
-    { id: string; type: 'eta' | 'delivered' | 'status'; title: string; description: string; at: string }[]
+    { id: string; type: 'eta' | 'delivered' | 'status' | 'location'; title: string; description: string; at: string }[]
   >([]);
   const [events, setEvents] = useState<ShipmentEvent[]>([]);
-  const lastSnapshot = useRef<{ eta: string; status: ShipmentStatus } | null>(null);
+  const lastSnapshot = useRef<{ eta: string; status: ShipmentStatus; location: string } | null>(null);
+
+  useEffect(() => {
+    initializeDemoData();
+  }, []);
 
   useEffect(() => {
     const id = searchParams.get('id');
@@ -73,39 +79,128 @@ export default function TrackShipment() {
     }
   }, [shipment]);
 
+  // Watch for admin updates (ETA changes / delivery) on the tracked shipment
+  useEffect(() => {
+    if (!shipment) {
+      lastSnapshot.current = null;
+      return;
+    }
+
+    lastSnapshot.current = {
+      eta: shipment.estimatedDelivery,
+      status: shipment.status,
+      location: `${shipment.currentLocation.city}, ${shipment.currentLocation.country}`,
+    };
+    const currentId = shipment.trackingId;
+    setEvents(getShipmentEvents(currentId));
+
+    const check = () => {
+      const latest = getShipmentByTrackingId(currentId);
+      const prev = lastSnapshot.current;
+      if (!latest || !prev) return;
+
+      const news: typeof notifications = [];
+
+      if (latest.estimatedDelivery !== prev.eta) {
+        news.push({
+          id: `eta-${Date.now()}`,
+          type: 'eta',
+          title: 'Delivery date & time updated',
+          description: `New estimated delivery: ${formatDateTime(latest.estimatedDelivery)}`,
+          at: new Date().toISOString(),
+        });
+      }
+
+      const latestLocation = `${latest.currentLocation.city}, ${latest.currentLocation.country}`;
+      if (latestLocation !== prev.location) {
+        news.push({
+          id: `location-${Date.now()}`,
+          type: 'location',
+          title: 'Package location updated',
+          description: `Your package is now at ${latestLocation}.`,
+          at: new Date().toISOString(),
+        });
+      }
+
+      if (latest.status !== prev.status) {
+        news.push(
+          latest.status === 'delivered'
+            ? {
+                id: `delivered-${Date.now()}`,
+                type: 'delivered',
+                title: 'Shipment delivered',
+                description: `${latest.trackingId} was marked as delivered${
+                  latest.deliveredAt ? ` on ${formatDateTime(latest.deliveredAt)}` : ''
+                }.`,
+                at: new Date().toISOString(),
+              }
+            : {
+                id: `status-${Date.now()}`,
+                type: 'status',
+                title: 'Shipment status updated',
+                description: `Status is now "${statusConfig[latest.status]?.label ?? latest.status}".`,
+                at: new Date().toISOString(),
+              }
+        );
+      }
+
+      setEvents(getShipmentEvents(currentId));
+
+      if (news.length > 0) {
+        lastSnapshot.current = {
+          eta: latest.estimatedDelivery,
+          status: latest.status,
+          location: latestLocation,
+        };
+        setShipment(latest);
+        setNotifications((current) => [...news, ...current].slice(0, 5));
+        news.forEach((n) =>
+          toast({
+            title: n.title,
+            description: n.description,
+          })
+        );
+      }
+    };
+
+    const interval = setInterval(check, 3000);
+    window.addEventListener('storage', check);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', check);
+    };
+  }, [shipment?.trackingId]);
+
 
   const handleSearch = async (id?: string) => {
     const searchId = id || trackingId;
+    const validation = validateTrackingId(searchId);
     
-    if (!searchId.trim()) {
-      setError('Please enter a tracking ID');
+    if (!validation.valid) {
+      setError(validation.error || t('tracking.invalidFormat'));
       return;
     }
 
     setIsLoading(true);
     setError('');
     setShipment(null);
+    setNotifications([]);
+    setEvents([]);
 
     try {
       const result = await trackShipment(searchId.toUpperCase());
       
       if (result.success && result.data) {
         setShipment(result.data);
-        // Add to recently tracked
-        getRecentlyTracked();
       } else {
-        if (result.error === 'Shipment not found.') {
-          removeRecentlyTracked(searchId);
-        }
-        setError(result.error || 'Shipment not found');
+        setError(t('tracking.notFound'));
       }
-    } catch (err) {
+    } catch {
       toast({
-        title: 'Error',
-        description: err instanceof Error ? err.message : 'Failed to track shipment',
+        title: t('common.error'),
+        description: t('errors.generic'),
         variant: 'destructive',
       });
-      setError('Failed to load tracking information');
     } finally {
       setIsLoading(false);
     }
@@ -219,6 +314,14 @@ export default function TrackShipment() {
                 ))}
               </div>
             )}
+
+            {/* Live map */}
+            <ShipmentMap
+              shipment={shipment}
+              locationUpdates={events
+                .filter((e) => e.type === 'location')
+                .map((e) => ({ id: e.id, description: e.description, createdAt: e.createdAt }))}
+            />
 
             {/* Status Card */}
             <Card>

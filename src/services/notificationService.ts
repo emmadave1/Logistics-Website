@@ -1,5 +1,4 @@
-export type ShipmentEventType = 'eta' | 'status' | 'delivered' | 'created';
-
+export type ShipmentEventType = 'eta' | 'status' | 'delivered' | 'created' | 'location';
 export interface ShipmentEvent {
   id: string;
   trackingId: string;

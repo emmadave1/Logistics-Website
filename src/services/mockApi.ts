@@ -155,9 +155,11 @@ export async function updateShipmentStatus(
   }
   
   if (location) {
+    const [city, country] = location.split(',').map(part => part.trim());
     updates.currentLocation = {
       ...shipment.currentLocation,
-      city: location.split(',')[0]?.trim() || shipment.currentLocation.city,
+      city: city || shipment.currentLocation.city,
+      country: country || shipment.currentLocation.country,
     };
   }
   
@@ -183,6 +185,21 @@ export async function updateShipmentStatus(
       from: statusLabels[shipment.status],
       to: statusLabels[status],
     });
+  }
+
+  if (updated && location) {
+    const previousLocation = `${shipment.currentLocation.city}, ${shipment.currentLocation.country}`;
+    const nextLocation = `${updated.currentLocation.city}, ${updated.currentLocation.country}`;
+    if (previousLocation !== nextLocation) {
+      addShipmentEvent({
+        trackingId,
+        type: 'location',
+        title: 'Package location updated',
+        description: `Package is now at ${nextLocation}.`,
+        from: previousLocation,
+        to: nextLocation,
+      });
+    }
   }
 
   return {
@@ -216,6 +233,51 @@ export async function updateShipmentEta(
     });
   }
   
+  return { success: true, data: updated };
+}
+
+// Update current package location (admin)
+export async function updateShipmentLocation(
+  trackingId: string,
+  city: string,
+  country: string,
+  note?: string
+): Promise<ApiResponse<Shipment>> {
+  await randomDelay();
+
+  const shipment = storage.getShipmentByTrackingId(trackingId);
+  if (!shipment) {
+    return { success: false, error: 'Shipment not found' };
+  }
+
+  const previousLocation = `${shipment.currentLocation.city}, ${shipment.currentLocation.country}`;
+  const nextLocation = `${city.trim()}, ${country.trim()}`;
+
+  const updated = storage.updateShipment(trackingId, {
+    currentLocation: {
+      ...shipment.currentLocation,
+      city: city.trim(),
+      country: country.trim(),
+    },
+  });
+
+  if (!updated) {
+    return { success: false, error: 'Shipment not found' };
+  }
+
+  if (previousLocation !== nextLocation) {
+    addShipmentEvent({
+      trackingId,
+      type: 'location',
+      title: 'Package location updated',
+      description: note?.trim()
+        ? `Package is now at ${nextLocation}. ${note.trim()}`
+        : `Package moved from ${previousLocation} to ${nextLocation}.`,
+      from: previousLocation,
+      to: nextLocation,
+    });
+  }
+
   return { success: true, data: updated };
 }
 
