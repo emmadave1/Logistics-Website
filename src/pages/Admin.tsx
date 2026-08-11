@@ -44,7 +44,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import Layout from '@/components/layout/Layout';
 import { Shipment, ShipmentStatus, AdminUser } from '@/types/shipment';
 import { SupportTicket, TicketStatus, ChatConversation } from '@/types/support';
-import { adminLogin, adminLogout, getAllShipments, updateShipmentStatus, updateShipmentEta, getAnalytics } from '@/services/api';
+import { adminLogin, adminLogout, getAllShipments, updateShipmentStatus, updateShipmentEta, updateShipmentLocation, getAnalytics } from '@/services/mockApi';
 import { getAdminSession } from '@/services/storage';
 import { getTickets, updateTicket, getAllChatConversations, addAgentMessage, setAgentHandled, markConversationReadByAgent, GENERAL_CHAT_KEY } from '@/services/supportService';
 import { formatDateTime } from '@/utils/formatters';
@@ -92,6 +92,11 @@ export default function Admin() {
   const [etaShipment, setEtaShipment] = useState<Shipment | null>(null);
   const [etaValue, setEtaValue] = useState('');
   const [isSavingEta, setIsSavingEta] = useState(false);
+
+  const [locationShipment, setLocationShipment] = useState<Shipment | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<ShipmentStatus | null>(null);
+  const [locationForm, setLocationForm] = useState({ city: '', country: '', note: '' });
+  const [isSavingLocation, setIsSavingLocation] = useState(false);
 
   // Live chat
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -200,11 +205,48 @@ export default function Admin() {
     toast({ title: 'Logged out', description: 'You have been logged out.' });
   };
 
-  const handleStatusUpdate = async (trackingId: string, newStatus: ShipmentStatus) => {
-    const result = await updateShipmentStatus(trackingId, newStatus);
+  const openLocationDialog = (shipment: Shipment, newStatus?: ShipmentStatus) => {
+    setLocationShipment(shipment);
+    setPendingStatus(newStatus ?? null);
+    setLocationForm({
+      city: shipment.currentLocation.city,
+      country: shipment.currentLocation.country,
+      note: '',
+    });
+  };
+
+  const closeLocationDialog = () => {
+    setLocationShipment(null);
+    setPendingStatus(null);
+  };
+
+  const handleLocationSave = async () => {
+    if (!locationShipment || !locationForm.city.trim() || !locationForm.country.trim()) return;
+    setIsSavingLocation(true);
+
+    const trackingId = locationShipment.trackingId;
+    const locationLabel = `${locationForm.city.trim()}, ${locationForm.country.trim()}`;
+
+    const result = pendingStatus
+      ? await updateShipmentStatus(trackingId, pendingStatus, locationLabel)
+      : await updateShipmentLocation(
+          trackingId,
+          locationForm.city,
+          locationForm.country,
+          locationForm.note
+        );
+
+    setIsSavingLocation(false);
+
     if (result.success) {
+      closeLocationDialog();
       loadData();
-      toast({ title: 'Updated!', description: `Shipment ${trackingId} status updated.` });
+      toast({
+        title: pendingStatus ? 'Status & location updated' : 'Location updated',
+        description: `${trackingId} is now at ${locationLabel}.`,
+      });
+    } else {
+      toast({ title: 'Update failed', description: result.error, variant: 'destructive' });
     }
   };
 
@@ -480,7 +522,7 @@ export default function Admin() {
                         <div className="flex flex-wrap gap-2">
                           <Select
                             value={shipment.status}
-                            onValueChange={(v) => handleStatusUpdate(shipment.trackingId, v as ShipmentStatus)}
+                            onValueChange={(v) => openLocationDialog(shipment, v as ShipmentStatus)}
                           >
                             <SelectTrigger className="w-[160px]">
                               <SelectValue />
@@ -500,6 +542,14 @@ export default function Admin() {
                           >
                             <Edit className="h-4 w-4" />
                             Delivery date &amp; time
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="gap-2"
+                            onClick={() => openLocationDialog(shipment)}
+                          >
+                            <MapPin className="h-4 w-4" />
+                            Update location
                           </Button>
                         </div>
                       </div>
@@ -679,6 +729,64 @@ export default function Admin() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Update package location (and optionally status) */}
+        <Dialog open={!!locationShipment} onOpenChange={(open) => !open && closeLocationDialog()}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {pendingStatus ? 'Update status & location' : 'Update package location'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Shipment <span className="font-mono font-semibold">{locationShipment?.trackingId}</span>
+                {pendingStatus && (
+                  <> — new status <span className="font-semibold">{pendingStatus.replace('_', ' ')}</span></>
+                )}
+              </p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="loc-city">City</Label>
+                  <Input
+                    id="loc-city"
+                    value={locationForm.city}
+                    onChange={(e) => setLocationForm(p => ({ ...p, city: e.target.value }))}
+                    placeholder="Phoenix"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="loc-country">Country</Label>
+                  <Input
+                    id="loc-country"
+                    value={locationForm.country}
+                    onChange={(e) => setLocationForm(p => ({ ...p, country: e.target.value }))}
+                    placeholder="United States"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="loc-note">Note for the customer (optional)</Label>
+                <Textarea
+                  id="loc-note"
+                  rows={2}
+                  value={locationForm.note}
+                  onChange={(e) => setLocationForm(p => ({ ...p, note: e.target.value }))}
+                  placeholder="Arrived at the Phoenix sorting hub."
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={closeLocationDialog}>Cancel</Button>
+                <Button
+                  onClick={handleLocationSave}
+                  disabled={!locationForm.city.trim() || !locationForm.country.trim() || isSavingLocation}
+                >
+                  {isSavingLocation ? 'Saving...' : 'Save update'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Edit delivery date & time */}
         <Dialog open={!!etaShipment} onOpenChange={(open) => !open && setEtaShipment(null)}>
