@@ -25,16 +25,29 @@ function writeCache(cache: Cache) {
   }
 }
 
+/** Basic sanity validation for coordinates. */
+export function isValidGeoPoint(p: GeoPoint | null | undefined): p is GeoPoint {
+  return (
+    !!p &&
+    Number.isFinite(p.lat) &&
+    Number.isFinite(p.lng) &&
+    Math.abs(p.lat) <= 90 &&
+    Math.abs(p.lng) <= 180 &&
+    !(p.lat === 0 && p.lng === 0)
+  );
+}
+
 /**
  * Geocode a "City, Country" string using the free OpenStreetMap Nominatim API.
- * Results are cached in localStorage so the map stays instant on repeat visits.
+ * Successful results are cached in localStorage so the map loads instantly next time.
  */
 export async function geocodePlace(query: string): Promise<GeoPoint | null> {
   const key = query.trim().toLowerCase();
   if (!key) return null;
 
   const cache = readCache();
-  if (key in cache) return cache[key];
+  const cached = cache[key];
+  if (isValidGeoPoint(cached)) return cached;
 
   try {
     const res = await fetch(
@@ -48,6 +61,8 @@ export async function geocodePlace(query: string): Promise<GeoPoint | null> {
       ? { lat: parseFloat(first.lat), lng: parseFloat(first.lon), label: first.display_name }
       : null;
 
+    if (!isValidGeoPoint(point)) return null;
+
     cache[key] = point;
     writeCache(cache);
     return point;
@@ -55,6 +70,28 @@ export async function geocodePlace(query: string): Promise<GeoPoint | null> {
     return null;
   }
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Geocode with automatic retry and exponential backoff (500ms, 1s, 2s, …).
+ * `onAttempt` reports the attempt number (1-based) so the UI can show progress.
+ */
+export async function geocodePlaceWithRetry(
+  query: string,
+  attempts = 3,
+  baseDelay = 500,
+  onAttempt?: (attempt: number) => void
+): Promise<GeoPoint | null> {
+  for (let i = 0; i < attempts; i++) {
+    onAttempt?.(i + 1);
+    const point = await geocodePlace(query);
+    if (isValidGeoPoint(point)) return point;
+    if (i < attempts - 1) await sleep(baseDelay * 2 ** i);
+  }
+  return null;
+}
+
 
 /** Clear the geocoding cache. Pass a specific query to clear only that key, or omit to clear all. */
 export function clearGeocodeCache(query?: string): void {
