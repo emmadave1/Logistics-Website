@@ -227,18 +227,33 @@ export function ShipmentMap({
     });
     mapRef.current = map;
 
+    requestAnimationFrame(() => {
+      map.invalidateSize();
+    });
+
     setTilesReady(false);
+
     const tiles = L.tileLayer(
       "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
       {
-        maxZoom: 18,
+        maxZoom: 19,
         attribution: "© OpenStreetMap contributors",
       },
     );
-    tiles.on("load", () => setTilesReady(true));
+
     tiles.addTo(map);
-    // Failsafe: never keep the skeleton up forever if a tile event is missed
-    const tileTimeout = window.setTimeout(() => setTilesReady(true), 4000);
+
+    // Don't depend only on Leaflet's tile "load" event.
+    // Give the map a short moment to render, then reveal it.
+    const tileTimeout = window.setTimeout(() => {
+      setTilesReady(true);
+      map.invalidateSize();
+    }, 1500);
+
+    tiles.on("load", () => {
+      setTilesReady(true);
+      map.invalidateSize();
+    });
 
     const latlngs = arc.map((p) => [p.lat, p.lng]) as [number, number][];
 

@@ -20,17 +20,39 @@ export function formatCountdown(targetDate: string | Date): {
 } {
   const now = new Date();
   const target = new Date(targetDate);
-  const isOverdue = now > target;
-  
-  if (isOverdue) {
-    return { days: 0, hours: 0, minutes: 0, isOverdue: true };
+
+  if (Number.isNaN(target.getTime())) {
+    return {
+      days: 0,
+      hours: 0,
+      minutes: 0,
+      isOverdue: true,
+    };
   }
-  
-  const days = differenceInDays(target, now);
-  const hours = differenceInHours(target, now) % 24;
-  const minutes = differenceInMinutes(target, now) % 60;
-  
-  return { days, hours, minutes, isOverdue: false };
+
+  const difference = target.getTime() - now.getTime();
+
+  if (difference <= 0) {
+    return {
+      days: 0,
+      hours: 0,
+      minutes: 0,
+      isOverdue: true,
+    };
+  }
+
+  const totalMinutes = Math.floor(difference / (1000 * 60));
+
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  return {
+    days,
+    hours,
+    minutes,
+    isOverdue: false,
+  };
 }
 
 export function formatWeight(weight: number): string {
