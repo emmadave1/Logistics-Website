@@ -26,7 +26,7 @@ import { useToast } from '@/hooks/use-toast';
 import Layout from '@/components/layout/Layout';
 import { Shipment, ShipmentStatus } from '@/types/shipment';
 import { trackShipment } from '@/services/api';
-import { getRecentlyTracked, initializeDemoData, getShipmentByTrackingId } from '@/services/storage';
+import { getRecentlyTracked, getShipmentByTrackingId } from '@/services/storage';
 import { validateTrackingId } from '@/utils/validators';
 import { getShipmentEvents, ShipmentEvent } from '@/services/notificationService';
 import { ShipmentMap } from '@/components/tracking/ShipmentMap';
@@ -57,9 +57,9 @@ export default function TrackShipment() {
   const [events, setEvents] = useState<ShipmentEvent[]>([]);
   const lastSnapshot = useRef<{ eta: string; status: ShipmentStatus; location: string } | null>(null);
 
-  useEffect(() => {
-    initializeDemoData();
-  }, []);
+  // useEffect(() => {
+  //   initializeDemoData();
+  // }, []);
 
   useEffect(() => {
     const id = searchParams.get('id');
