@@ -102,6 +102,7 @@ const getTruckIcon = (status: ShipmentStatus) => {
   `,
     38,
   );
+  return truckIcon;
 };
 interface ShipmentMapProps {
   shipment: Shipment;
@@ -209,7 +210,7 @@ export function ShipmentMap({
 
   // Initialise the map once the route coordinates are available
   useEffect(() => {
-    if (!containerRef.current || !origin || !destination) {
+    if (!containerRef.current || !origin || !destination || route.length < 2) {
       return;
     }
 
@@ -377,6 +378,7 @@ export function ShipmentMap({
     origin?.lng,
     destination?.lat,
     destination?.lng,
+    route.length,
     retryCount,
   ]);
 
@@ -427,11 +429,16 @@ export function ShipmentMap({
       layersRef.current.travelled.setLatLngs(travelled);
     }
 
-    const position = interpolate(origin, destination, progress);
+    const routeIndex = Math.min(
+      Math.round(progress * (arc.length - 1)),
+      arc.length - 1,
+    );
+
+    const position = arc[routeIndex];
 
     console.log("🚚 Moving truck to:", position);
 
-    if (layersRef.current.vehicle) {
+    if (layersRef.current.vehicle && position) {
       layersRef.current.vehicle.setLatLng([position.lat, position.lng]);
     }
   }, [progress, arc, origin, destination]);
