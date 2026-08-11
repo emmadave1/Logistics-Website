@@ -25,7 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import Layout from '@/components/layout/Layout';
 import { Shipment, ShipmentStatus } from '@/types/shipment';
-import { trackShipment } from '@/services/mockApi';
+import { trackShipment } from '@/services/api';
 import { getRecentlyTracked, initializeDemoData, getShipmentByTrackingId } from '@/services/storage';
 import { validateTrackingId } from '@/utils/validators';
 import { getShipmentEvents, ShipmentEvent } from '@/services/notificationService';
@@ -110,7 +110,7 @@ export default function TrackShipment() {
           at: new Date().toISOString(),
         });
       }
-
+  
       const latestLocation = `${latest.currentLocation.city}, ${latest.currentLocation.country}`;
       if (latestLocation !== prev.location) {
         news.push({

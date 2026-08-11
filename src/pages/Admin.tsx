@@ -44,7 +44,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import Layout from '@/components/layout/Layout';
 import { Shipment, ShipmentStatus, AdminUser } from '@/types/shipment';
 import { SupportTicket, TicketStatus, ChatConversation } from '@/types/support';
-import { adminLogin, adminLogout, getAllShipments, updateShipmentStatus, updateShipmentEta, updateShipmentLocation, getAnalytics } from '@/services/mockApi';
+import { adminLogin, adminLogout, getAllShipments, updateShipmentStatus, updateShipmentEta, updateShipmentLocation, getAnalytics } from '@/services/api';
 import { getAdminSession } from '@/services/storage';
 import { getTickets, updateTicket, getAllChatConversations, addAgentMessage, setAgentHandled, markConversationReadByAgent, GENERAL_CHAT_KEY } from '@/services/supportService';
 import { formatDateTime } from '@/utils/formatters';

@@ -19,12 +19,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/utils/formatters";
 import { cn } from "@/lib/utils";
 import {
-  buildArc,
   geocodePlaceWithRetry,
   interpolate,
   isValidGeoPoint,
   GeoPoint,
   clearGeocodeCache,
+  getRoadRoute,
 } from "@/services/geocode";
 
 const progressByStatus: Record<ShipmentStatus, number> = {
@@ -50,13 +50,56 @@ const pinIcon = (color: string) =>
     26,
   );
 
-const truckIcon = divIcon(
-  `<span style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9999px;background:hsl(var(--primary));box-shadow:0 0 0 10px hsl(var(--primary)/.18),0 4px 12px rgba(0,0,0,.35)">
-     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
-   </span>`,
-  38,
-);
+const getTruckIcon = (status: ShipmentStatus) => {
+  const isDelivered = status === "delivered";
+  const isActive =
+    status === "processing" ||
+    status === "in_transit" ||
+    status === "out_for_delivery";
 
+  const animationClass = isActive
+    ? "movemate-truck-active"
+    : isDelivered
+      ? "movemate-truck-delivered"
+      : "movemate-truck-idle";
+
+  return divIcon(
+    `<span
+      class="${animationClass}"
+      style="
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        width:38px;
+        height:38px;
+        border-radius:9999px;
+        background:hsl(var(--primary));
+        box-shadow:
+          0 0 0 10px hsl(var(--primary)/.18),
+          0 4px 12px rgba(0,0,0,.35);
+      "
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="white"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/>
+        <path d="M15 18H9"/>
+        <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/>
+        <circle cx="17" cy="18" r="2"/>
+        <circle cx="7" cy="18" r="2"/>
+      </svg>
+    </span>`,
+    38,
+  );
+};
 interface ShipmentMapProps {
   shipment: Shipment;
   locationUpdates?: { id: string; description: string; createdAt: string }[];
@@ -77,9 +120,13 @@ export function ShipmentMap({
     currentDot?: L.CircleMarker;
   }>({});
 
+  const animationRef = useRef<number | null>(null);
+
   const [origin, setOrigin] = useState<GeoPoint | null>(null);
   const [destination, setDestination] = useState<GeoPoint | null>(null);
   const [current, setCurrent] = useState<GeoPoint | null>(null);
+  const [route, setRoute] = useState<GeoPoint[]>([]);
+  const [routeLoading, setRouteLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(1);
   const [tilesReady, setTilesReady] = useState(false);
@@ -91,7 +138,11 @@ export function ShipmentMap({
 
   const routeValid = isValidGeoPoint(origin) && isValidGeoPoint(destination);
   const hasRouteError = !loading && !routeValid;
-  const showSkeleton = loading || (routeValid && !tilesReady);
+  const showSkeleton =
+    loading ||
+    routeLoading ||
+    (routeValid && route.length === 0) ||
+    (routeValid && !tilesReady);
 
   const handleRetry = () => {
     [pickup, delivery, currentPlace].forEach((place) =>
@@ -122,15 +173,52 @@ export function ShipmentMap({
     };
   }, [pickup, delivery, currentPlace, retryCount]);
 
-  const arc = useMemo(
-    () => (routeValid ? buildArc(origin!, destination!, 160) : []),
-    [routeValid, origin, destination],
-  );
+  const arc = route;
+
+  useEffect(() => {
+    if (!origin || !destination) {
+      setRoute([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    setRouteLoading(true);
+
+    getRoadRoute(origin, destination)
+      .then((points) => {
+        if (cancelled) return;
+
+        setRoute(points);
+      })
+      .catch((error) => {
+        console.error("Failed to get road route:", error);
+        if (!cancelled) {
+          setRoute([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setRouteLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [origin, destination]);
 
   // Initialise the real map once we have coordinates
   useEffect(() => {
-    if (!containerRef.current || !origin || !destination || mapRef.current)
+    if (
+      !containerRef.current ||
+      !origin ||
+      !destination ||
+      route.length === 0 ||
+      mapRef.current
+    ) {
       return;
+    }
 
     const map = L.map(containerRef.current, {
       zoomControl: true,
@@ -178,11 +266,17 @@ export function ShipmentMap({
       .bindPopup(`<b>Destination</b><br/>${delivery}`)
       .addTo(map);
 
-    layersRef.current.vehicle = L.marker([origin.lat, origin.lng], {
-      icon: truckIcon,
-      zIndexOffset: 1000,
-    }).addTo(map);
+    const initialIndex = Math.round(progress * (arc.length - 1));
 
+    const initialPosition = arc[initialIndex] ?? origin;
+
+    layersRef.current.vehicle = L.marker(
+      [initialPosition.lat, initialPosition.lng],
+      {
+        icon: getTruckIcon(shipment.status),
+        zIndexOffset: 1000,
+      },
+    ).addTo(map);
     map.fitBounds(L.latLngBounds(latlngs), { padding: [50, 50] });
     setTimeout(() => map.invalidateSize(), 200);
 
@@ -213,17 +307,90 @@ export function ShipmentMap({
       .addTo(map);
   }, [current?.lat, current?.lng, currentPlace, current]);
 
-  // Keep travelled path + vehicle in sync with the shipment status
+  useEffect(() => {
+    const vehicle = layersRef.current.vehicle;
+
+    if (!vehicle) return;
+
+    vehicle.setIcon(getTruckIcon(shipment.status));
+  }, [shipment.status]);
+
+  // Animate truck along the real road route
   useEffect(() => {
     if (!origin || !destination || arc.length === 0) return;
-    const count = Math.max(1, Math.round(progress * (arc.length - 1)));
-    const travelled = arc.slice(0, count + 1).map((p) => [p.lat, p.lng]) as [
-      number,
-      number,
-    ][];
-    layersRef.current.travelled?.setLatLngs(travelled);
-    const pos = interpolate(origin, destination, progress);
-    layersRef.current.vehicle?.setLatLng([pos.lat, pos.lng]);
+
+    const vehicle = layersRef.current.vehicle;
+    const travelledLayer = layersRef.current.travelled;
+
+    if (!vehicle || !travelledLayer) return;
+
+    // Cancel any previous animation
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+
+    const targetIndex = Math.max(1, Math.round(progress * (arc.length - 1)));
+
+    const targetPosition = arc[targetIndex] ?? destination;
+
+    const currentPosition = vehicle.getLatLng();
+
+    const startLat = currentPosition.lat;
+    const startLng = currentPosition.lng;
+
+    const endLat = targetPosition.lat;
+    const endLng = targetPosition.lng;
+
+    const startTime = performance.now();
+
+    // Animation duration in milliseconds
+    const duration = 3000;
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+
+      const rawProgress = Math.min(elapsed / duration, 1);
+
+      // Smooth ease-in-out
+      const easedProgress =
+        rawProgress < 0.5
+          ? 2 * rawProgress * rawProgress
+          : 1 - Math.pow(-2 * rawProgress + 2, 2) / 2;
+
+      const lat = startLat + (endLat - startLat) * easedProgress;
+
+      const lng = startLng + (endLng - startLng) * easedProgress;
+
+      vehicle.setLatLng([lat, lng]);
+
+      // Update travelled route progressively
+      const currentIndex = Math.max(1, Math.round(targetIndex * easedProgress));
+
+      const travelled = arc
+        .slice(0, currentIndex + 1)
+        .map((p) => [p.lat, p.lng] as [number, number]);
+
+      // Add the vehicle's exact current position
+      travelled.push([lat, lng]);
+
+      travelledLayer.setLatLngs(travelled);
+
+      if (rawProgress < 1) {
+        animationRef.current = requestAnimationFrame(animate);
+      } else {
+        animationRef.current = null;
+      }
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+
+        animationRef.current = null;
+      }
+    };
   }, [progress, arc, origin, destination]);
 
   // Text-only route timeline used when the map can't be plotted
@@ -295,7 +462,9 @@ export function ShipmentMap({
                     ? attempt > 1
                       ? `Locating route… (attempt ${attempt})`
                       : "Locating route…"
-                    : "Loading map tiles…"}
+                    : routeLoading
+                      ? "Finding road route…"
+                      : "Loading map tiles…"}
                 </p>
               </div>
             </div>
@@ -369,7 +538,7 @@ export function ShipmentMap({
             </motion.div>
           )}
 
-          {!showSkeleton && !hasRouteError && (
+          {false && showSkeleton && !hasRouteError && (
             <>
               <div className="pointer-events-none absolute top-4 left-4 z-[400] flex items-center gap-2 rounded-full bg-card/90 backdrop-blur px-3 py-1.5 border border-border shadow-sm">
                 <Navigation className="h-3.5 w-3.5 text-primary" />

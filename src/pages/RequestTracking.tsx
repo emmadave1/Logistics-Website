@@ -30,7 +30,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import Layout from '@/components/layout/Layout';
 import { ShipmentFormData, PackageCategory, Shipment } from '@/types/shipment';
-import { createShipment } from '@/services/mockApi';
+import { createShipment } from '@/services/api';
 import { getFormDraft, saveFormDraft, clearFormDraft, getShipmentByTrackingId, addRecentlyTracked } from '@/services/storage';
 import { formatDateTime } from '@/utils/formatters';
 import { cn } from '@/lib/utils';
@@ -53,9 +53,22 @@ const categories: { value: PackageCategory; label: string }[] = [
 ];
 
 const countries = [
-  'United States', 'United Kingdom', 'Canada', 'Australia', 
-  'Germany', 'France', 'Japan', 'China', 'India', 'Brazil',
-  'Mexico', 'Spain', 'Italy', 'Netherlands', 'Singapore'
+  'United States',
+  'United Kingdom',
+  'Canada',
+  'Australia',
+  'Germany',
+  'France',
+  'Japan',
+  'China',
+  'Nigeria',
+  'India',
+  'Brazil',
+  'Mexico',
+  'Spain',
+  'Italy',
+  'Netherlands',
+  'Singapore',
 ];
 
 const initialFormData: ShipmentFormData = {

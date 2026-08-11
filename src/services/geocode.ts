@@ -4,7 +4,7 @@ export interface GeoPoint {
   label?: string;
 }
 
-const CACHE_KEY = 'movemate_geocode_cache';
+const CACHE_KEY = "movemate_geocode_cache";
 
 type Cache = Record<string, GeoPoint | null>;
 
@@ -43,30 +43,60 @@ export function isValidGeoPoint(p: GeoPoint | null | undefined): p is GeoPoint {
  */
 export async function geocodePlace(query: string): Promise<GeoPoint | null> {
   const key = query.trim().toLowerCase();
+
   if (!key) return null;
 
   const cache = readCache();
   const cached = cache[key];
-  if (isValidGeoPoint(cached)) return cached;
+
+  if (isValidGeoPoint(cached)) {
+    return cached;
+  }
 
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`,
-      { headers: { Accept: 'application/json' } }
-    );
-    if (!res.ok) throw new Error(`Geocoding failed (${res.status})`);
-    const results = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>;
-    const first = results[0];
-    const point: GeoPoint | null = first
-      ? { lat: parseFloat(first.lat), lng: parseFloat(first.lon), label: first.display_name }
-      : null;
+    const url = new URL("https://nominatim.openstreetmap.org/search");
 
-    if (!isValidGeoPoint(point)) return null;
+    url.searchParams.set("format", "json");
+    url.searchParams.set("limit", "1");
+    url.searchParams.set("q", query);
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Geocoding failed: ${response.status}`);
+    }
+
+    const results = await response.json();
+
+    if (!Array.isArray(results) || results.length === 0) {
+      console.warn("No location found for:", query);
+      return null;
+    }
+
+    const first = results[0];
+
+    const point: GeoPoint = {
+      lat: Number(first.lat),
+      lng: Number(first.lon),
+      label: first.display_name,
+    };
+
+    if (!isValidGeoPoint(point)) {
+      console.warn("Invalid coordinates returned for:", query);
+      return null;
+    }
 
     cache[key] = point;
     writeCache(cache);
+
     return point;
-  } catch {
+  } catch (error) {
+    console.error("Geocoding error:", query, error);
     return null;
   }
 }
@@ -81,7 +111,7 @@ export async function geocodePlaceWithRetry(
   query: string,
   attempts = 3,
   baseDelay = 500,
-  onAttempt?: (attempt: number) => void
+  onAttempt?: (attempt: number) => void,
 ): Promise<GeoPoint | null> {
   for (let i = 0; i < attempts; i++) {
     onAttempt?.(i + 1);
@@ -91,7 +121,6 @@ export async function geocodePlaceWithRetry(
   }
   return null;
 }
-
 
 /** Clear the geocoding cache. Pass a specific query to clear only that key, or omit to clear all. */
 export function clearGeocodeCache(query?: string): void {
@@ -111,7 +140,6 @@ export function clearGeocodeCache(query?: string): void {
   }
 }
 
-
 /** Great-circle interpolation between two points (t = 0..1). */
 export function interpolate(a: GeoPoint, b: GeoPoint, t: number): GeoPoint {
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -127,16 +155,18 @@ export function interpolate(a: GeoPoint, b: GeoPoint, t: number): GeoPoint {
     Math.asin(
       Math.sqrt(
         Math.sin((lat2 - lat1) / 2) ** 2 +
-          Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2
-      )
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2,
+      ),
     );
 
   if (d === 0 || Number.isNaN(d)) return { lat: a.lat, lng: a.lng };
 
   const A = Math.sin((1 - t) * d) / Math.sin(d);
   const B = Math.sin(t * d) / Math.sin(d);
-  const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
-  const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
+  const x =
+    A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
+  const y =
+    A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
   const z = A * Math.sin(lat1) + B * Math.sin(lat2);
 
   return {
@@ -147,5 +177,43 @@ export function interpolate(a: GeoPoint, b: GeoPoint, t: number): GeoPoint {
 
 /** Build a smooth great-circle path of `steps` points. */
 export function buildArc(a: GeoPoint, b: GeoPoint, steps = 128): GeoPoint[] {
-  return Array.from({ length: steps + 1 }, (_, i) => interpolate(a, b, i / steps));
+  return Array.from({ length: steps + 1 }, (_, i) =>
+    interpolate(a, b, i / steps),
+  );
+}
+
+export async function getRoadRoute(
+  origin: GeoPoint,
+  destination: GeoPoint
+): Promise<GeoPoint[]> {
+  try {
+    const url =
+      `https://router.project-osrm.org/route/v1/driving/` +
+      `${origin.lng},${origin.lat};${destination.lng},${destination.lat}` +
+      `?overview=full&geometries=geojson`;
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Routing failed (${response.status})`);
+    }
+
+    const data = await response.json();
+
+    if (data.code !== "Ok" || !data.routes?.length) {
+      throw new Error("No route found");
+    }
+
+    const coordinates = data.routes[0].geometry.coordinates;
+
+    return coordinates
+      .map(([lng, lat]: [number, number]) => ({
+        lat,
+        lng,
+      }))
+      .filter(isValidGeoPoint);
+  } catch (error) {
+    console.error("Road route error:", error);
+    return [];
+  }
 }

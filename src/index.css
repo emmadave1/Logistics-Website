@@ -213,3 +213,59 @@
 .typing-dot:nth-child(3) {
   animation-delay: 0.4s;
 }
+
+/* Movemate moving vehicle pulse */
+.movemate-truck {
+  animation: movemate-truck-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes movemate-truck-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.15);
+    opacity: 0.65;
+  }
+}
+
+.movemate-truck-active {
+  animation: movemate-truck-pulse 1.4s ease-in-out infinite;
+}
+
+.movemate-truck-idle {
+  animation: none;
+}
+
+.movemate-truck-delivered {
+  animation: movemate-truck-delivered 2s ease-in-out infinite;
+}
+
+@keyframes movemate-truck-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.18);
+    opacity: 0.7;
+  }
+}
+
+@keyframes movemate-truck-delivered {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.08);
+    opacity: 0.85;
+  }
+}
