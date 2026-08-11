@@ -138,11 +138,7 @@ export function ShipmentMap({
 
   const routeValid = isValidGeoPoint(origin) && isValidGeoPoint(destination);
   const hasRouteError = !loading && !routeValid;
-  const showSkeleton =
-    loading ||
-    routeLoading ||
-    (routeValid && route.length === 0) ||
-    (routeValid && !tilesReady);
+ const showSkeleton = loading;
 
   const handleRetry = () => {
     [pickup, delivery, currentPlace].forEach((place) =>
@@ -208,113 +204,171 @@ export function ShipmentMap({
     };
   }, [origin, destination]);
 
-  // Initialise the real map once we have coordinates
-  useEffect(() => {
-    if (
-      !containerRef.current ||
-      !origin ||
-      !destination ||
-      route.length === 0 ||
-      mapRef.current
-    ) {
-      return;
+  // Initialise the map once the route coordinates are available
+useEffect(() => {
+  if (!containerRef.current || !origin || !destination) {
+    return;
+  }
+
+  // Prevent duplicate map instances
+  if (mapRef.current) {
+    mapRef.current.remove();
+    mapRef.current = null;
+  }
+
+  const container = containerRef.current;
+
+  // Make sure the container has dimensions before Leaflet initializes
+  if (container.clientWidth === 0 || container.clientHeight === 0) {
+    console.warn("⚠️ Map container has no size yet");
+
+    const timer = window.setTimeout(() => {
+      if (container.clientWidth > 0 && container.clientHeight > 0) {
+        setRetryCount((count) => count + 1);
+      }
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }
+
+  console.log("🗺️ Initializing Leaflet map");
+  console.log("Origin:", origin);
+  console.log("Destination:", destination);
+
+  const map = L.map(container, {
+    zoomControl: true,
+    scrollWheelZoom: false,
+    attributionControl: true,
+  });
+
+  mapRef.current = map;
+
+  const tiles = L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+      maxZoom: 19,
+      attribution: "© OpenStreetMap contributors",
+      crossOrigin: true,
     }
+  );
 
-    const map = L.map(containerRef.current, {
-      zoomControl: true,
-      scrollWheelZoom: false,
-      attributionControl: true,
-    });
-    mapRef.current = map;
+  tiles.on("loading", () => {
+    console.log("⏳ Loading OpenStreetMap tiles...");
+  });
 
-    requestAnimationFrame(() => {
+  tiles.on("load", () => {
+    console.log("✅ OpenStreetMap tiles loaded");
+    setTilesReady(true);
+
+    // Force Leaflet to recalculate its size
+    setTimeout(() => {
       map.invalidateSize();
+    }, 100);
+  });
+
+  tiles.on("tileerror", (error) => {
+    console.error("❌ OpenStreetMap tile error:", error);
+    setTilesReady(true);
+  });
+
+  tiles.addTo(map);
+
+  const latlngs = arc.map(
+    (point) => [point.lat, point.lng] as [number, number]
+  );
+
+  // Full route
+  L.polyline(latlngs, {
+    color: "#64748b",
+    weight: 3,
+    opacity: 0.55,
+    dashArray: "8 10",
+  }).addTo(map);
+
+  // Travelled route
+  layersRef.current.travelled = L.polyline([], {
+    color: "#2563eb",
+    weight: 5,
+    opacity: 0.95,
+    lineCap: "round",
+  }).addTo(map);
+
+  // Origin
+  L.marker([origin.lat, origin.lng], {
+    icon: pinIcon("#2563eb"),
+  })
+    .bindPopup(`<b>Origin</b><br/>${pickup}`)
+    .addTo(map);
+
+  // Destination
+  L.marker([destination.lat, destination.lng], {
+    icon: pinIcon(isDelivered ? "#16a34a" : "#64748b"),
+  })
+    .bindPopup(`<b>Destination</b><br/>${delivery}`)
+    .addTo(map);
+
+  // Initial vehicle position
+  const initialIndex = Math.round(
+    progress * (arc.length - 1)
+  );
+
+  const initialPosition = arc[initialIndex] ?? origin;
+
+  layersRef.current.vehicle = L.marker(
+    [initialPosition.lat, initialPosition.lng],
+    {
+      icon: getTruckIcon(shipment.status),
+      zIndexOffset: 1000,
+    }
+  ).addTo(map);
+
+  // Fit route
+  const bounds = L.latLngBounds(latlngs);
+
+  if (bounds.isValid()) {
+    map.fitBounds(bounds, {
+      padding: [50, 50],
+      maxZoom: 6,
     });
+  } else {
+    map.setView([origin.lat, origin.lng], 5);
+  }
 
-    setTilesReady(false);
+  // Leaflet sometimes needs this after React finishes rendering
+  setTimeout(() => {
+    map.invalidateSize();
+  }, 100);
 
-    const tiles = L.tileLayer(
-      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-      {
-        maxZoom: 19,
-        attribution: "© OpenStreetMap contributors",
-      },
-    );
+  setTimeout(() => {
+    map.invalidateSize();
+  }, 500);
 
-    tiles.on("load", () => {
-      console.log("✅ OpenStreetMap tiles loaded");
-      setTilesReady(true);
-    });
+  // Failsafe
+  const tileTimeout = window.setTimeout(() => {
+    console.warn("⚠️ Map tile timeout reached");
+    setTilesReady(true);
+  }, 5000);
 
-    tiles.on("tileerror", (error) => {
-      console.error("❌ OpenStreetMap tile error:", error);
-      setTilesReady(true);
-    });
+  return () => {
+    window.clearTimeout(tileTimeout);
 
-    tiles.addTo(map);
-
-    // Don't depend only on Leaflet's tile "load" event.
-    // Give the map a short moment to render, then reveal it.
-    const tileTimeout = window.setTimeout(() => {
-      console.log("⚠️ Map tile timeout reached");
-      setTilesReady(true);
-    }, 4000);
-
-    tiles.on("load", () => {
-      setTilesReady(true);
-      map.invalidateSize();
-    });
-
-    const latlngs = arc.map((p) => [p.lat, p.lng]) as [number, number][];
-
-    L.polyline(latlngs, {
-      color: "#64748b",
-      weight: 3,
-      opacity: 0.55,
-      dashArray: "8 10",
-    }).addTo(map);
-
-    layersRef.current.travelled = L.polyline([], {
-      color: "#2563eb",
-      weight: 5,
-      opacity: 0.95,
-      lineCap: "round",
-    }).addTo(map);
-
-    L.marker([origin.lat, origin.lng], { icon: pinIcon("#2563eb") })
-      .bindPopup(`<b>Origin</b><br/>${pickup}`)
-      .addTo(map);
-
-    L.marker([destination.lat, destination.lng], {
-      icon: pinIcon(isDelivered ? "#16a34a" : "#64748b"),
-    })
-      .bindPopup(`<b>Destination</b><br/>${delivery}`)
-      .addTo(map);
-
-    const initialIndex = Math.round(progress * (arc.length - 1));
-
-    const initialPosition = arc[initialIndex] ?? origin;
-
-    layersRef.current.vehicle = L.marker(
-      [initialPosition.lat, initialPosition.lng],
-      {
-        icon: getTruckIcon(shipment.status),
-        zIndexOffset: 1000,
-      },
-    ).addTo(map);
-    map.fitBounds(L.latLngBounds(latlngs), { padding: [50, 50] });
-    setTimeout(() => map.invalidateSize(), 200);
-
-    return () => {
-      window.clearTimeout(tileTimeout);
+    if (mapRef.current === map) {
       map.remove();
       mapRef.current = null;
-      layersRef.current = {};
-    };
+    }
 
-    // Only re-create when the route coordinates actually change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [origin?.lat, origin?.lng, destination?.lat, destination?.lng]);
+    layersRef.current = {};
+  };
+
+  // Only recreate when coordinates change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [
+  origin?.lat,
+  origin?.lng,
+  destination?.lat,
+  destination?.lng,
+  retryCount,
+]);
 
   // Last reported location marker
   useEffect(() => {
@@ -472,12 +526,12 @@ export function ShipmentMap({
         <div className="relative">
           <div
             ref={containerRef}
-            className="w-full h-[320px] sm:h-[420px] z-0 bg-muted"
+            className="w-full h-[320px] sm:h-[420px] z-0 bg-muted relative"
             role="application"
             aria-label={`Route map for shipment ${shipment.trackingId}`}
           />
 
-          {showSkeleton && !hasRouteError && (
+         {loading && !hasRouteError && (
             <div className="absolute inset-0 z-[500] bg-background p-4">
               <Skeleton className="h-full w-full rounded-xl skeleton-shimmer" />
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
