@@ -63,42 +63,42 @@ const getTruckIcon = (status: ShipmentStatus) => {
       ? "movemate-truck-delivered"
       : "movemate-truck-idle";
 
-  return divIcon(
-    `<span
-      class="${animationClass}"
-      style="
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        width:38px;
-        height:38px;
-        border-radius:9999px;
-        background:hsl(var(--primary));
-        box-shadow:
-          0 0 0 10px hsl(var(--primary)/.18),
-          0 4px 12px rgba(0,0,0,.35);
-      "
+const truckIcon = divIcon(
+  `
+  <span
+    style="
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      width:42px;
+      height:42px;
+      border-radius:9999px;
+      background:#2563eb;
+      border:3px solid white;
+      box-shadow:0 0 0 6px rgba(37,99,235,0.25),0 4px 12px rgba(0,0,0,0.35);
+    "
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="white"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
     >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="white"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/>
-        <path d="M15 18H9"/>
-        <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/>
-        <circle cx="17" cy="18" r="2"/>
-        <circle cx="7" cy="18" r="2"/>
-      </svg>
-    </span>`,
-    38,
-  );
+      <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/>
+      <path d="M15 18H9"/>
+      <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/>
+      <circle cx="17" cy="18" r="2"/>
+      <circle cx="7" cy="18" r="2"/>
+    </svg>
+  </span>
+  `,
+  42
+);
 };
 interface ShipmentMapProps {
   shipment: Shipment;
@@ -138,7 +138,7 @@ export function ShipmentMap({
 
   const routeValid = isValidGeoPoint(origin) && isValidGeoPoint(destination);
   const hasRouteError = !loading && !routeValid;
- const showSkeleton = loading;
+  const showSkeleton = loading;
 
   const handleRetry = () => {
     [pickup, delivery, currentPlace].forEach((place) =>
@@ -205,170 +205,177 @@ export function ShipmentMap({
   }, [origin, destination]);
 
   // Initialise the map once the route coordinates are available
-useEffect(() => {
-  if (!containerRef.current || !origin || !destination) {
-    return;
-  }
-
-  // Prevent duplicate map instances
-  if (mapRef.current) {
-    mapRef.current.remove();
-    mapRef.current = null;
-  }
-
-  const container = containerRef.current;
-
-  // Make sure the container has dimensions before Leaflet initializes
-  if (container.clientWidth === 0 || container.clientHeight === 0) {
-    console.warn("⚠️ Map container has no size yet");
-
-    const timer = window.setTimeout(() => {
-      if (container.clientWidth > 0 && container.clientHeight > 0) {
-        setRetryCount((count) => count + 1);
-      }
-    }, 300);
-
-    return () => window.clearTimeout(timer);
-  }
-
-  console.log("🗺️ Initializing Leaflet map");
-  console.log("Origin:", origin);
-  console.log("Destination:", destination);
-
-  const map = L.map(container, {
-    zoomControl: true,
-    scrollWheelZoom: false,
-    attributionControl: true,
-  });
-
-  mapRef.current = map;
-
-  const tiles = L.tileLayer(
-    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    {
-      maxZoom: 19,
-      attribution: "© OpenStreetMap contributors",
-      crossOrigin: true,
+  useEffect(() => {
+    if (!containerRef.current || !origin || !destination) {
+      return;
     }
-  );
 
-  tiles.on("loading", () => {
-    console.log("⏳ Loading OpenStreetMap tiles...");
-  });
-
-  tiles.on("load", () => {
-    console.log("✅ OpenStreetMap tiles loaded");
-    setTilesReady(true);
-
-    // Force Leaflet to recalculate its size
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 100);
-  });
-
-  tiles.on("tileerror", (error) => {
-    console.error("❌ OpenStreetMap tile error:", error);
-    setTilesReady(true);
-  });
-
-  tiles.addTo(map);
-
-  const latlngs = arc.map(
-    (point) => [point.lat, point.lng] as [number, number]
-  );
-
-  // Full route
-  L.polyline(latlngs, {
-    color: "#64748b",
-    weight: 3,
-    opacity: 0.55,
-    dashArray: "8 10",
-  }).addTo(map);
-
-  // Travelled route
-  layersRef.current.travelled = L.polyline([], {
-    color: "#2563eb",
-    weight: 5,
-    opacity: 0.95,
-    lineCap: "round",
-  }).addTo(map);
-
-  // Origin
-  L.marker([origin.lat, origin.lng], {
-    icon: pinIcon("#2563eb"),
-  })
-    .bindPopup(`<b>Origin</b><br/>${pickup}`)
-    .addTo(map);
-
-  // Destination
-  L.marker([destination.lat, destination.lng], {
-    icon: pinIcon(isDelivered ? "#16a34a" : "#64748b"),
-  })
-    .bindPopup(`<b>Destination</b><br/>${delivery}`)
-    .addTo(map);
-
-  // Initial vehicle position
-  const initialIndex = Math.round(
-    progress * (arc.length - 1)
-  );
-
-  const initialPosition = arc[initialIndex] ?? origin;
-
-  layersRef.current.vehicle = L.marker(
-    [initialPosition.lat, initialPosition.lng],
-    {
-      icon: getTruckIcon(shipment.status),
-      zIndexOffset: 1000,
-    }
-  ).addTo(map);
-
-  // Fit route
-  const bounds = L.latLngBounds(latlngs);
-
-  if (bounds.isValid()) {
-    map.fitBounds(bounds, {
-      padding: [50, 50],
-      maxZoom: 6,
-    });
-  } else {
-    map.setView([origin.lat, origin.lng], 5);
-  }
-
-  // Leaflet sometimes needs this after React finishes rendering
-  setTimeout(() => {
-    map.invalidateSize();
-  }, 100);
-
-  setTimeout(() => {
-    map.invalidateSize();
-  }, 500);
-
-  // Failsafe
-  const tileTimeout = window.setTimeout(() => {
-    console.warn("⚠️ Map tile timeout reached");
-    setTilesReady(true);
-  }, 5000);
-
-  return () => {
-    window.clearTimeout(tileTimeout);
-
-    if (mapRef.current === map) {
-      map.remove();
+    // Prevent duplicate map instances
+    if (mapRef.current) {
+      mapRef.current.remove();
       mapRef.current = null;
     }
 
-    layersRef.current = {};
-  };
+    const container = containerRef.current;
 
-  // Only recreate when coordinates change
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [
-  origin?.lat,
-  origin?.lng,
-  destination?.lat,
-  destination?.lng,
-  retryCount,
-]);
+    // Make sure the container has dimensions before Leaflet initializes
+    if (container.clientWidth === 0 || container.clientHeight === 0) {
+      console.warn("⚠️ Map container has no size yet");
+
+      const timer = window.setTimeout(() => {
+        if (container.clientWidth > 0 && container.clientHeight > 0) {
+          setRetryCount((count) => count + 1);
+        }
+      }, 300);
+
+      return () => window.clearTimeout(timer);
+    }
+
+    console.log("🗺️ Initializing Leaflet map");
+    console.log("Origin:", origin);
+    console.log("Destination:", destination);
+
+    const map = L.map(container, {
+      zoomControl: true,
+      scrollWheelZoom: false,
+      attributionControl: true,
+    });
+
+    mapRef.current = map;
+
+    const tiles = L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap contributors",
+        crossOrigin: true,
+      },
+    );
+
+    tiles.on("loading", () => {
+      console.log("⏳ Loading OpenStreetMap tiles...");
+    });
+
+    tiles.on("load", () => {
+      console.log("✅ OpenStreetMap tiles loaded");
+      setTilesReady(true);
+
+      // Force Leaflet to recalculate its size
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 100);
+    });
+
+    tiles.on("tileerror", (error) => {
+      console.error("❌ OpenStreetMap tile error:", error);
+      setTilesReady(true);
+    });
+
+    tiles.addTo(map);
+
+    const latlngs = arc.map(
+      (point) => [point.lat, point.lng] as [number, number],
+    );
+
+    console.log("🛣️ Route points:", latlngs.length);
+    console.log("📍 Origin:", origin);
+    console.log("🏁 Destination:", destination);
+
+    if (latlngs.length > 1) {
+      // Full route
+      L.polyline(latlngs, {
+        color: "#64748b",
+        weight: 5,
+        opacity: 0.8,
+        dashArray: "8 10",
+      }).addTo(map);
+
+      // Travelled route
+      layersRef.current.travelled = L.polyline([], {
+        color: "#2563eb",
+        weight: 6,
+        opacity: 1,
+        lineCap: "round",
+        lineJoin: "round",
+      }).addTo(map);
+    }
+
+    // Origin
+    L.marker([origin.lat, origin.lng], {
+      icon: pinIcon("#2563eb"),
+    })
+      .bindPopup(`<b>Origin</b><br/>${pickup}`)
+      .addTo(map);
+
+    // Destination
+    L.marker([destination.lat, destination.lng], {
+      icon: pinIcon(isDelivered ? "#16a34a" : "#64748b"),
+    })
+      .bindPopup(`<b>Destination</b><br/>${delivery}`)
+      .addTo(map);
+
+    // Initial vehicle position
+    const initialIndex = Math.round(progress * (arc.length - 1));
+
+    const initialPosition = arc[initialIndex] ?? origin;
+
+    console.log("🚚 Truck position:", initialPosition);
+
+    layersRef.current.vehicle = L.marker(
+      [initialPosition.lat, initialPosition.lng],
+      {
+        icon: getTruckIcon(shipment.status),
+        zIndexOffset: 2000,
+      },
+    ).addTo(map);
+
+    // Fit route
+    const bounds = L.latLngBounds(latlngs);
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, {
+        padding: [50, 50],
+        maxZoom: 6,
+      });
+    } else {
+      map.setView([origin.lat, origin.lng], 5);
+    }
+
+    // Leaflet sometimes needs this after React finishes rendering
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 500);
+
+    // Failsafe
+    const tileTimeout = window.setTimeout(() => {
+      console.warn("⚠️ Map tile timeout reached");
+      setTilesReady(true);
+    }, 5000);
+
+    return () => {
+      window.clearTimeout(tileTimeout);
+
+      if (mapRef.current === map) {
+        map.remove();
+        mapRef.current = null;
+      }
+
+      layersRef.current = {};
+    };
+
+    // Only recreate when coordinates change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    origin?.lat,
+    origin?.lng,
+    destination?.lat,
+    destination?.lng,
+    retryCount,
+  ]);
 
   // Last reported location marker
   useEffect(() => {
@@ -396,80 +403,34 @@ useEffect(() => {
 
   // Animate truck along the real road route
   useEffect(() => {
-    if (!origin || !destination || arc.length === 0) return;
-
-    const vehicle = layersRef.current.vehicle;
-    const travelledLayer = layersRef.current.travelled;
-
-    if (!vehicle || !travelledLayer) return;
-
-    // Cancel any previous animation
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
+    if (!origin || !destination || arc.length < 2) {
+      console.warn("⚠️ Cannot draw route:", {
+        origin,
+        destination,
+        arcLength: arc.length,
+      });
+      return;
     }
 
-    const targetIndex = Math.max(1, Math.round(progress * (arc.length - 1)));
+    const count = Math.max(1, Math.round(progress * (arc.length - 1)));
 
-    const targetPosition = arc[targetIndex] ?? destination;
+    const travelled = arc
+      .slice(0, count + 1)
+      .map((point) => [point.lat, point.lng] as [number, number]);
 
-    const currentPosition = vehicle.getLatLng();
+    console.log("🛣️ Drawing travelled route:", travelled.length);
 
-    const startLat = currentPosition.lat;
-    const startLng = currentPosition.lng;
+    if (layersRef.current.travelled) {
+      layersRef.current.travelled.setLatLngs(travelled);
+    }
 
-    const endLat = targetPosition.lat;
-    const endLng = targetPosition.lng;
+    const position = interpolate(origin, destination, progress);
 
-    const startTime = performance.now();
+    console.log("🚚 Moving truck to:", position);
 
-    // Animation duration in milliseconds
-    const duration = 3000;
-
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-
-      const rawProgress = Math.min(elapsed / duration, 1);
-
-      // Smooth ease-in-out
-      const easedProgress =
-        rawProgress < 0.5
-          ? 2 * rawProgress * rawProgress
-          : 1 - Math.pow(-2 * rawProgress + 2, 2) / 2;
-
-      const lat = startLat + (endLat - startLat) * easedProgress;
-
-      const lng = startLng + (endLng - startLng) * easedProgress;
-
-      vehicle.setLatLng([lat, lng]);
-
-      // Update travelled route progressively
-      const currentIndex = Math.max(1, Math.round(targetIndex * easedProgress));
-
-      const travelled = arc
-        .slice(0, currentIndex + 1)
-        .map((p) => [p.lat, p.lng] as [number, number]);
-
-      // Add the vehicle's exact current position
-      travelled.push([lat, lng]);
-
-      travelledLayer.setLatLngs(travelled);
-
-      if (rawProgress < 1) {
-        animationRef.current = requestAnimationFrame(animate);
-      } else {
-        animationRef.current = null;
-      }
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-
-        animationRef.current = null;
-      }
-    };
+    if (layersRef.current.vehicle) {
+      layersRef.current.vehicle.setLatLng([position.lat, position.lng]);
+    }
   }, [progress, arc, origin, destination]);
 
   // Text-only route timeline used when the map can't be plotted
@@ -531,7 +492,7 @@ useEffect(() => {
             aria-label={`Route map for shipment ${shipment.trackingId}`}
           />
 
-         {loading && !hasRouteError && (
+          {loading && !hasRouteError && (
             <div className="absolute inset-0 z-[500] bg-background p-4">
               <Skeleton className="h-full w-full rounded-xl skeleton-shimmer" />
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
@@ -616,7 +577,6 @@ useEffect(() => {
               </ol>
             </motion.div>
           )}
-
         </div>
 
         <div className="grid sm:grid-cols-3 gap-4 p-6 border-t border-border">
