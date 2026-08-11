@@ -1,6 +1,7 @@
 import { Shipment, ShipmentFormData, ShipmentStatus, AdminUser } from '@/types/shipment';
 
-const API_BASE_URL = 'https://movemate-5973.onrender.com';
+// const API_BASE_URL = 'https://movemate-5973.onrender.com';
+const API_BASE_URL = 'http://localhost:8081';
 
 // Error types for better handling
 export class ApiError extends Error {
@@ -178,7 +179,52 @@ function normalizeShipment(backendShipment: any): Shipment {
       country: backendShipment.sender?.pickupCountry || '',
       coordinates: { lat: 0, lng: 0 },
     },
-    timeline: [],
+    // Normalize timeline from backend which may be a string or JSON string.
+    timeline: (() => {
+      const raw = backendShipment.timeline || backendShipment.TimeLine;
+      if (!raw) return [];
+
+      try {
+        if (Array.isArray(raw)) {
+          return raw.map((t: any) => ({
+            status: (t.status || backendShipment.status || 'pending') as any,
+            title: t.title || t.status || String(t),
+            description: t.description || '',
+            timestamp: t.timestamp || t.TimeStamp || backendShipment.createdAt || new Date().toISOString(),
+            location: t.location || t.Location || '',
+            completed: !!t.completed || (t.status === 'delivered'),
+          }));
+        }
+
+        // raw is likely a string (plain or JSON). Try parse, otherwise use as a single entry.
+        if (typeof raw === 'string') {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            return parsed.map((t: any) => ({
+              status: (t.status || backendShipment.status || 'pending') as any,
+              title: t.title || t.status || String(t),
+              description: t.description || '',
+              timestamp: t.timestamp || t.TimeStamp || backendShipment.createdAt || new Date().toISOString(),
+              location: t.location || t.Location || '',
+              completed: !!t.completed || (t.status === 'delivered'),
+            }));
+          }
+        }
+      } catch (e) {
+        // fall through to create simple timeline entry
+      }
+
+      // Fallback: single timeline item using the string value
+      const text = typeof raw === 'string' ? raw : String(raw);
+      return [{
+        status: (backendShipment.status || 'pending') as any,
+        title: text,
+        description: '',
+        timestamp: backendShipment.createdAt || new Date().toISOString(),
+        location: backendShipment.location || '',
+        completed: (backendShipment.status === 'delivered'),
+      }];
+    })(),
   };
 }
 
