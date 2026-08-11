@@ -41,12 +41,31 @@ function divIcon(html: string, size = 34) {
     className: "movemate-marker",
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
   });
 }
 
 const pinIcon = (color: string) =>
   divIcon(
-    `<span style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:9999px;background:${color};box-shadow:0 0 0 6px ${color}33,0 2px 6px rgba(0,0,0,.35)"><span style="width:8px;height:8px;border-radius:9999px;background:#fff"></span></span>`,
+    `
+      <div style="
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        width:26px;
+        height:26px;
+        border-radius:50%;
+        background:${color};
+        box-shadow:0 0 0 6px ${color}33, 0 2px 6px rgba(0,0,0,.35);
+      ">
+        <div style="
+          width:8px;
+          height:8px;
+          border-radius:50%;
+          background:white;
+        "></div>
+      </div>
+    `,
     26,
   );
 
@@ -63,42 +82,26 @@ const getTruckIcon = (status: ShipmentStatus) => {
       ? "movemate-truck-delivered"
       : "movemate-truck-idle";
 
-const truckIcon = divIcon(
-  `
-  <span
-    style="
+  const truckIcon = divIcon(
+    `
+    <div style="
       display:flex;
       align-items:center;
       justify-content:center;
-      width:42px;
-      height:42px;
-      border-radius:9999px;
+      width:38px;
+      height:38px;
+      border-radius:50%;
       background:#2563eb;
-      border:3px solid white;
-      box-shadow:0 0 0 6px rgba(37,99,235,0.25),0 4px 12px rgba(0,0,0,0.35);
-    "
-  >
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="white"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/>
-      <path d="M15 18H9"/>
-      <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/>
-      <circle cx="17" cy="18" r="2"/>
-      <circle cx="7" cy="18" r="2"/>
-    </svg>
-  </span>
+      box-shadow:0 0 0 10px rgba(37,99,235,.18), 0 4px 12px rgba(0,0,0,.35);
+    ">
+      <span style="
+        font-size:20px;
+        line-height:1;
+      ">🚚</span>
+    </div>
   `,
-  42
-);
+    38,
+  );
 };
 interface ShipmentMapProps {
   shipment: Shipment;
