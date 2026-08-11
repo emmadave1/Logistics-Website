@@ -25,6 +25,24 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+type BackendPayload = Record<string, unknown>;
+
+type JsonResponse = unknown;
+
+function getObject(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function getString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function getNumber(value: unknown, fallback = 0): number {
+  return typeof value === "number" ? value : fallback;
+}
+
 // Helper function for API calls with better error handling
 async function apiCall<T>(
   endpoint: string,
@@ -88,7 +106,7 @@ async function apiCall<T>(
       };
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as ApiResponse<T>;
     return data;
   } catch (error) {
     console.error("API error:", error);
@@ -116,15 +134,18 @@ async function apiCall<T>(
 export async function trackShipment(
   trackingId: string,
 ): Promise<ApiResponse<Shipment>> {
-  const response = await apiCall<any>(
+  const response = await apiCall<BackendPayload>(
     `/track/${encodeURIComponent(trackingId)}`,
   );
 
-  if (response.success && response.data) {
-    response.data = normalizeShipment(response.data);
+  if (!response.success || !response.data) {
+    return { success: false, error: response.error };
   }
 
-  return response;
+  return {
+    success: true,
+    data: normalizeShipment(response.data),
+  };
 }
 
 // Create shipment
@@ -154,17 +175,19 @@ export async function createShipment(
     },
   };
 
-  const response = await apiCall<any>("/shipments", {
+  const response = await apiCall<BackendPayload>("/shipments", {
     method: "POST",
     body: JSON.stringify(backendFormat),
   });
 
-  // Transform backend response to frontend format if needed
-  if (response.success && response.data) {
-    response.data = normalizeShipment(response.data);
+  if (!response.success || !response.data) {
+    return { success: false, error: response.error };
   }
 
-  return response;
+  return {
+    success: true,
+    data: normalizeShipment(response.data),
+  };
 }
 
 function buildShipmentTimeline({
@@ -258,19 +281,18 @@ function buildShipmentTimeline({
 }
 
 // Helper function to transform backend shipment to frontend format
-function normalizeShipment(backendShipment: any): Shipment {
-  const status = (backendShipment.status ||
-    backendShipment.Status ||
+function normalizeShipment(backendShipment: BackendPayload): Shipment {
+  const status = (getString(backendShipment.status) ||
+    getString(backendShipment.Status) ||
     "pending") as ShipmentStatus;
 
-  const pickupCity = backendShipment.sender?.pickupCity?.trim() || "";
+  const sender = getObject(backendShipment.sender);
+  const receiver = getObject(backendShipment.receiver);
 
-  const pickupCountry = backendShipment.sender?.pickupCountry?.trim() || "";
-
-  const deliveryCity = backendShipment.receiver?.deliveryCity?.trim() || "";
-
-  const deliveryCountry =
-    backendShipment.receiver?.deliveryCountry?.trim() || "";
+  const pickupCity = getString(sender.pickupCity).trim();
+  const pickupCountry = getString(sender.pickupCountry).trim();
+  const deliveryCity = getString(receiver.deliveryCity).trim();
+  const deliveryCountry = getString(receiver.deliveryCountry).trim();
 
   // Backend currently stores the current location inside the timeline string.
   // Example: "in_transit - Chicago, United States"
@@ -297,24 +319,27 @@ function normalizeShipment(backendShipment: any): Shipment {
 
   // If backend eventually provides currentLocation directly,
   // prefer that over the timeline string.
-  if (backendShipment.currentLocation) {
-    currentCity = backendShipment.currentLocation.city?.trim() || currentCity;
+  const currentLocation = getObject(backendShipment.currentLocation);
+  currentCity = getString(currentLocation.city).trim() || currentCity;
+  currentCountry = getString(currentLocation.country).trim() || currentCountry;
 
-    currentCountry =
-      backendShipment.currentLocation.country?.trim() || currentCountry;
-  }
+  const createdAt =
+    getString(backendShipment["createdAt"]) ||
+    getString(backendShipment["CreatedAt"]) ||
+    new Date().toISOString();
+  const estimatedDelivery =
+    getString(backendShipment["estimatedDelivery"]) ||
+    getString(backendShipment["EstimatedDelivery"]) ||
+    new Date().toISOString();
+  const deliveredAt =
+    getString(backendShipment["deliveryAt"]) ||
+    getString(backendShipment["DeliveryAt"]);
 
   const timeline = buildShipmentTimeline({
     status,
-    createdAt:
-      backendShipment.createdAt ||
-      backendShipment.CreatedAt ||
-      new Date().toISOString(),
-    estimatedDelivery:
-      backendShipment.estimatedDelivery ||
-      backendShipment.EstimatedDelivery ||
-      new Date().toISOString(),
-    deliveredAt: backendShipment.deliveryAt || backendShipment.DeliveryAt,
+    createdAt,
+    estimatedDelivery,
+    deliveredAt,
     pickupCity,
     pickupCountry,
     deliveryCity,
@@ -323,40 +348,38 @@ function normalizeShipment(backendShipment: any): Shipment {
     currentCountry,
   });
 
+  const id = getString(backendShipment["id"]) || getString(backendShipment["Id"]);
+  const trackingId =
+    getString(backendShipment["trackingId"]) ||
+    getString(backendShipment["TrackingId"]);
+  const pkg = getObject(backendShipment["package"]);
+
   return {
-    id: backendShipment.id || backendShipment.Id,
-    trackingId: backendShipment.trackingId || backendShipment.TrackingId,
+    id,
+    trackingId,
 
     status,
 
-    senderName: backendShipment.sender?.senderName || "",
-    senderPhone: backendShipment.sender?.senderPhone || "",
-    pickupLocation: backendShipment.sender?.pickupLocation || "",
+    senderName: getString(sender.senderName),
+    senderPhone: getString(sender.senderPhone),
+    pickupLocation: getString(sender.pickupLocation),
     pickupCity,
     pickupCountry,
 
-    receiverName: backendShipment.receiver?.receiverName || "",
-    receiverPhone: backendShipment.receiver?.receiverPhone || "",
-    deliveryLocation: backendShipment.receiver?.deliveryLocation || "",
+    receiverName: getString(receiver.receiverName),
+    receiverPhone: getString(receiver.receiverPhone),
+    deliveryLocation: getString(receiver.deliveryLocation),
     deliveryCity,
     deliveryCountry,
 
-    packageDescription: backendShipment.package?.packageDescription || "",
-    packageWeight: backendShipment.package?.packageWeight || 0,
-    packageCategory: (backendShipment.package?.packageCategories ||
-      "other") as any,
+    packageDescription: getString(pkg.packageDescription),
+    packageWeight: getNumber(pkg.packageWeight),
+    packageCategory:
+      (getString(pkg.packageCategories) || "other") as Shipment["packageCategory"],
 
-    createdAt:
-      backendShipment.createdAt ||
-      backendShipment.CreatedAt ||
-      new Date().toISOString(),
-
-    estimatedDelivery:
-      backendShipment.estimatedDelivery ||
-      backendShipment.EstimatedDelivery ||
-      new Date().toISOString(),
-
-    deliveredAt: backendShipment.deliveryAt || backendShipment.DeliveryAt,
+    createdAt,
+    estimatedDelivery,
+    deliveredAt,
 
     currentLocation: {
       city: currentCity,
@@ -377,12 +400,12 @@ export async function updateShipmentStatus(
   status: ShipmentStatus,
   location?: string,
 ): Promise<ApiResponse<Shipment>> {
-  const body: any = { status };
+  const body: BackendPayload = { status };
   if (location) {
     body.location = location;
   }
 
-  const response = await apiCall<any>(
+  const response = await apiCall<BackendPayload>(
     `/shipment/status/${encodeURIComponent(trackingId)}`,
     {
       method: "PUT",
@@ -390,11 +413,14 @@ export async function updateShipmentStatus(
     },
   );
 
-  if (response.success && response.data) {
-    response.data = normalizeShipment(response.data);
+  if (!response.success || !response.data) {
+    return { success: false, error: response.error };
   }
 
-  return response;
+  return {
+    success: true,
+    data: normalizeShipment(response.data),
+  };
 }
 
 // Update shipment ETA (admin)
@@ -402,7 +428,7 @@ export async function updateShipmentEta(
   trackingId: string,
   newEta: string,
 ): Promise<ApiResponse<Shipment>> {
-  const response = await apiCall<any>(
+  const response = await apiCall<BackendPayload>(
     `/shipment/eta/${encodeURIComponent(trackingId)}`,
     {
       method: "PUT",
@@ -410,11 +436,14 @@ export async function updateShipmentEta(
     },
   );
 
-  if (response.success && response.data) {
-    response.data = normalizeShipment(response.data);
+  if (!response.success || !response.data) {
+    return { success: false, error: response.error };
   }
 
-  return response;
+  return {
+    success: true,
+    data: normalizeShipment(response.data),
+  };
 }
 
 // Update shipment location (admin)
@@ -424,7 +453,7 @@ export async function updateShipmentLocation(
   country: string,
   note?: string,
 ): Promise<ApiResponse<Shipment>> {
-  const response = await apiCall<any>(
+  const response = await apiCall<BackendPayload>(
     `/shipment/location/${encodeURIComponent(trackingId)}`,
     {
       method: "PUT",
@@ -432,11 +461,14 @@ export async function updateShipmentLocation(
     },
   );
 
-  if (response.success && response.data) {
-    response.data = normalizeShipment(response.data);
+  if (!response.success || !response.data) {
+    return { success: false, error: response.error };
   }
 
-  return response;
+  return {
+    success: true,
+    data: normalizeShipment(response.data),
+  };
 }
 
 // Admin login
@@ -476,13 +508,16 @@ export async function adminLogout(): Promise<ApiResponse<null>> {
 
 // Get all shipments (admin)
 export async function getAllShipments(): Promise<ApiResponse<Shipment[]>> {
-  const response = await apiCall<any[]>("/admin/shipments");
+  const response = await apiCall<unknown[]>("/admin/shipments");
 
-  if (response.success && response.data) {
-    response.data = response.data.map(normalizeShipment);
+  if (!response.success || !response.data) {
+    return { success: false, error: response.error };
   }
 
-  return response;
+  return {
+    success: true,
+    data: response.data.map((item) => normalizeShipment(item as BackendPayload)),
+  };
 }
 
 // Get shipment analytics
@@ -495,7 +530,13 @@ export async function getAnalytics(): Promise<
     statusDistribution: { status: string; count: number }[];
   }>
 > {
-  return apiCall("/admin/analytics");
+  return apiCall<{
+    total: number;
+    delivered: number;
+    inTransit: number;
+    pending: number;
+    statusDistribution: { status: string; count: number }[];
+  }>("/admin/analytics");
 }
 
 // Batch update shipment status

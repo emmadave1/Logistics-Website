@@ -241,14 +241,24 @@ export function ShipmentMap({
       },
     );
 
+    tiles.on("load", () => {
+      console.log("✅ OpenStreetMap tiles loaded");
+      setTilesReady(true);
+    });
+
+    tiles.on("tileerror", (error) => {
+      console.error("❌ OpenStreetMap tile error:", error);
+      setTilesReady(true);
+    });
+
     tiles.addTo(map);
 
     // Don't depend only on Leaflet's tile "load" event.
     // Give the map a short moment to render, then reveal it.
     const tileTimeout = window.setTimeout(() => {
+      console.log("⚠️ Map tile timeout reached");
       setTilesReady(true);
-      map.invalidateSize();
-    }, 1500);
+    }, 4000);
 
     tiles.on("load", () => {
       setTilesReady(true);
@@ -553,19 +563,6 @@ export function ShipmentMap({
             </motion.div>
           )}
 
-          {false && showSkeleton && !hasRouteError && (
-            <>
-              <div className="pointer-events-none absolute top-4 left-4 z-[400] flex items-center gap-2 rounded-full bg-card/90 backdrop-blur px-3 py-1.5 border border-border shadow-sm">
-                <Navigation className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-medium">Live route</span>
-              </div>
-              <div className="pointer-events-none absolute top-4 right-4 z-[400] rounded-full bg-card/90 backdrop-blur px-3 py-1.5 border border-border shadow-sm">
-                <span className="text-xs font-semibold text-primary">
-                  {Math.round(progress * 100)}% of route
-                </span>
-              </div>
-            </>
-          )}
         </div>
 
         <div className="grid sm:grid-cols-3 gap-4 p-6 border-t border-border">
