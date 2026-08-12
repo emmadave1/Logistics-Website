@@ -448,32 +448,49 @@ export function ShipmentMap({
       return;
     }
 
-    const count = Math.max(1, Math.round(progress * (arc.length - 1)));
+    const vehicle = layersRef.current.vehicle;
+    const travelled = layersRef.current.travelled;
 
-    const travelled = arc
-      .slice(0, count + 1)
+    if (!vehicle) return;
+
+    // Convert progress (0 → 1) into a position on the route
+    const routePosition = progress * (arc.length - 1);
+
+    const startIndex = Math.floor(routePosition);
+    const endIndex = Math.min(startIndex + 1, arc.length - 1);
+
+    const segmentProgress = routePosition - startIndex;
+
+    const start = arc[startIndex];
+    const end = arc[endIndex];
+
+    if (!start || !end) return;
+
+    // Smoothly interpolate between the two route points
+    const position: GeoPoint = {
+      lat: start.lat + (end.lat - start.lat) * segmentProgress,
+      lng: start.lng + (end.lng - start.lng) * segmentProgress,
+    };
+
+    // Update travelled route
+    const travelledPoints = arc
+      .slice(0, endIndex + 1)
       .map((point) => [point.lat, point.lng] as [number, number]);
 
-    console.log("🛣️ Drawing travelled route:", travelled.length);
+    // Add current truck position to travelled route
+    travelledPoints.push([position.lat, position.lng]);
 
-    if (layersRef.current.travelled) {
-      layersRef.current.travelled.setLatLngs(travelled);
+    if (travelled) {
+      travelled.setLatLngs(travelledPoints);
     }
 
-    const routeIndex = Math.min(
-      Math.round(progress * (arc.length - 1)),
-      arc.length - 1,
-    );
+    console.log("🚚 Smooth truck position:", position);
 
-    const position = arc[routeIndex];
-
-    console.log("🚚 Moving truck to:", position);
-
-    if (layersRef.current.vehicle && position) {
-      layersRef.current.vehicle.setLatLng([position.lat, position.lng]);
-    }
+    vehicle.setLatLng([position.lat, position.lng], {
+      animate: true,
+      duration: 1,
+    });
   }, [progress, arc, origin, destination]);
-
   // Text-only route timeline used when the map can't be plotted
   const fallbackStops = useMemo(() => {
     const stops: {
