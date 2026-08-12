@@ -13,6 +13,9 @@ import {
   markConversationReadByUser,
   getUnreadForUser,
   GENERAL_CHAT_KEY,
+  getLastChatKey,
+  setLastChatKey,
+  getVisitorChatKey,
 } from '@/services/supportService';
 import { getRecentlyTracked } from '@/services/storage';
 import { useLocation } from 'react-router-dom';
@@ -20,6 +23,10 @@ import { useLocation } from 'react-router-dom';
 function resolveConversationKey(search: string): string {
   const fromUrl = new URLSearchParams(search).get('id');
   if (fromUrl) return fromUrl.toUpperCase();
+
+  const lastKey = getLastChatKey();
+  if (lastKey) return lastKey;
+
   const recent = getRecentlyTracked();
   if (recent.length > 0) return recent[0].trackingId.toUpperCase();
   return GENERAL_CHAT_KEY;
@@ -35,34 +42,50 @@ function formatMessageTime(iso: string): string {
 
 export default function ChatWidget() {
   const location = useLocation();
-  const conversationKey = resolveConversationKey(location.search);
+  const [chatKey, setChatKey] = useState<string>(() => resolveConversationKey(location.search));
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [message, setMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [userName, setUserName] = useState('');
+  const [nameInput, setNameInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Agent online status (simulated - changes every few minutes)
   const [isAgentOnline] = useState(() => Math.random() > 0.3);
 
-  // Load the persisted conversation for the active tracking ID
   useEffect(() => {
-    setConversation(getChatConversation(conversationKey));
-    setUnreadCount(getUnreadForUser(conversationKey));
-  }, [conversationKey]);
+    const key = resolveConversationKey(location.search);
+    setChatKey(key);
+  }, [location.search]);
+
+  // Load the persisted conversation for the active chat key
+  useEffect(() => {
+    const saved = getChatConversation(chatKey);
+    setConversation(saved);
+    setUnreadCount(getUnreadForUser(chatKey));
+    if (saved?.userName) {
+      setUserName(saved.userName);
+    }
+  }, [chatKey]);
+
+  useEffect(() => {
+    if (chatKey !== GENERAL_CHAT_KEY) {
+      setLastChatKey(chatKey);
+    }
+  }, [chatKey]);
 
   // Poll for live agent replies sent from the admin dashboard
   useEffect(() => {
     const interval = setInterval(() => {
-      const saved = getChatConversation(conversationKey);
+      const saved = getChatConversation(chatKey);
       if (!saved) return;
-      setUnreadCount(getUnreadForUser(conversationKey));
+      setUnreadCount(getUnreadForUser(chatKey));
       setConversation((current) => {
         if (!current) return saved;
-        // Refresh when new messages arrive OR read receipts change
         const changed =
           saved.messages.length !== current.messages.length ||
           saved.messages.filter((m) => m.readAt).length !==
@@ -71,7 +94,7 @@ export default function ChatWidget() {
       });
     }, 1500);
     return () => clearInterval(interval);
-  }, [conversationKey]);
+  }, [chatKey]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -83,38 +106,124 @@ export default function ChatWidget() {
   useEffect(() => {
     if (!isOpen || isMinimized || !conversation) return;
     if (conversation.messages.some((m) => !m.isUser && !m.readAt)) {
-      const updated = markConversationReadByUser(conversationKey);
+      const updated = markConversationReadByUser(chatKey);
       if (updated) setConversation(updated);
     }
     setUnreadCount(0);
-  }, [isOpen, isMinimized, conversation, conversationKey]);
+  }, [isOpen, isMinimized, conversation, chatKey]);
 
-  const initializeConversation = () => {
+  const getUserNameFromKey = (key: string): string | undefined => {
+    if (key.startsWith('USER:')) {
+      return key.replace('USER:', '').trim();
+    }
+    return undefined;
+  };
+
+  const getUserChatKey = (name: string): string => {
+    return getVisitorChatKey(name);
+  };
+
+  const getTrackingIdFromKey = (key: string): string | undefined => {
+    if (key && key !== GENERAL_CHAT_KEY && !key.startsWith('USER:')) {
+      return key;
+    }
+    return undefined;
+  };
+
+  const initializeConversation = (key: string, name?: string, trackingId?: string) => {
+    const welcomeLines: string[] = [];
+    if (name) {
+      welcomeLines.push(`Hello ${name}! 👋 Welcome to Movemate LogisticExpress support.`);
+    } else {
+      welcomeLines.push('Hello! 👋 Welcome to Movemate LogisticExpress support.');
+    }
+
+    if (trackingId) {
+      welcomeLines.push(`I see you're tracking ${trackingId}. How can I help you today?`);
+    } else {
+      welcomeLines.push('How can I help you today?');
+    }
+
     const newConversation: ChatConversation = {
       id: Date.now().toString(),
       messages: [
         {
           id: '1',
-          content: "Hello! 👋 Welcome to Movemate LogisticExpress support. How can I help you today?",
+          content: welcomeLines.join(' '),
           isUser: false,
           timestamp: new Date().toISOString(),
           quickReplies: ['Track my shipment', 'Delivery timeline', 'Lost tracking ID', 'Speak to an agent'],
         },
       ],
       isAgentOnline,
-      trackingId: conversationKey === GENERAL_CHAT_KEY ? undefined : conversationKey,
+      trackingId,
+      userName: name,
       startedAt: new Date().toISOString(),
       lastMessageAt: new Date().toISOString(),
+      key,
     };
     setConversation(newConversation);
-    saveChatConversation(newConversation, conversationKey);
+    saveChatConversation(newConversation, key);
+    setLastChatKey(key);
+    if (name) setUserName(name);
+  };
+
+  const handleNameSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
+    if (e) e.preventDefault();
+    const trimmedName = nameInput.trim();
+    if (!trimmedName) return;
+
+    const trackingId = getTrackingIdFromKey(chatKey);
+    const key = trackingId ? chatKey : getUserChatKey(trimmedName);
+    const saved = getChatConversation(key);
+
+    if (saved) {
+      const updatedConversation = {
+        ...saved,
+        userName: trimmedName,
+        key,
+      };
+      setConversation(updatedConversation);
+      saveChatConversation(updatedConversation, key);
+      setUserName(trimmedName);
+      setChatKey(key);
+      setLastChatKey(key);
+      setNameInput('');
+      return;
+    }
+
+    if (chatKey === GENERAL_CHAT_KEY && conversation) {
+      const migratedConversation: ChatConversation = {
+        ...conversation,
+        userName: trimmedName,
+        key,
+      };
+      setConversation(migratedConversation);
+      saveChatConversation(migratedConversation, key);
+      setChatKey(key);
+      setUserName(trimmedName);
+      setLastChatKey(key);
+      setNameInput('');
+      return;
+    }
+
+    initializeConversation(key, trimmedName, trackingId);
+    setChatKey(key);
+    setUserName(trimmedName);
+    setNameInput('');
   };
 
   const handleOpen = () => {
     setIsOpen(true);
     setIsMinimized(false);
-    if (!conversation) {
-      initializeConversation();
+    if (!conversation && chatKey !== GENERAL_CHAT_KEY) {
+      const trackingId = getTrackingIdFromKey(chatKey);
+      const nameFromKey = getUserNameFromKey(chatKey);
+      if (trackingId) {
+        initializeConversation(chatKey, nameFromKey, trackingId);
+      } else {
+        initializeConversation(chatKey, nameFromKey);
+      }
     }
     setTimeout(() => inputRef.current?.focus(), 100);
   };
@@ -135,7 +244,7 @@ export default function ChatWidget() {
       lastMessageAt: new Date().toISOString(),
     };
     setConversation(updatedConversation);
-    saveChatConversation(updatedConversation, conversationKey);
+    saveChatConversation(updatedConversation, conversation?.key ?? chatKey);
     setMessage('');
 
     // A live agent has taken over — no bot replies
@@ -159,7 +268,7 @@ export default function ChatWidget() {
         lastMessageAt: new Date().toISOString(),
       };
       setConversation(finalConversation);
-      saveChatConversation(finalConversation, conversationKey);
+      saveChatConversation(finalConversation, conversation?.key ?? chatKey);
       setIsTyping(false);
     }, 1000 + Math.random() * 1000);
   };
@@ -238,11 +347,13 @@ export default function ChatWidget() {
                 <div>
                   <h3 className="font-semibold">Support Chat</h3>
                   <p className="text-xs opacity-80">
-                    {conversationKey !== GENERAL_CHAT_KEY
-                      ? `Conversation for ${conversationKey}`
-                      : isAgentOnline
-                        ? 'Online - Usually replies instantly'
-                        : 'Offline - Leave a message'}
+                    {conversation?.userName
+                      ? `Chat with ${conversation.userName}${conversation.trackingId ? ` • ${conversation.trackingId}` : ''}`
+                      : chatKey !== GENERAL_CHAT_KEY
+                        ? `Conversation for ${chatKey}`
+                        : isAgentOnline
+                          ? 'Online - Usually replies instantly'
+                          : 'Offline - Leave a message'}
                   </p>
                 </div>
               </div>
@@ -269,95 +380,118 @@ export default function ChatWidget() {
             {/* Chat Body */}
             {!isMinimized && (
               <>
-                <ScrollArea className="h-[340px] p-4" ref={scrollRef}>
-                  <div className="space-y-4">
-                    {conversation?.messages.map((msg) => (
-                      <div key={msg.id}>
-                        <div
-                          className={cn(
-                            "flex",
-                            msg.isUser ? "justify-end" : "justify-start"
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              "max-w-[80%] rounded-2xl px-4 py-2 text-sm",
-                              msg.isUser
-                                ? "bg-primary text-primary-foreground rounded-br-md"
-                                : msg.isAgent
-                                  ? "bg-accent text-accent-foreground border border-primary/30 rounded-bl-md"
-                                  : "bg-muted rounded-bl-md"
-                            )}
-                          >
-                            {msg.isAgent && (
-                              <p className="text-[11px] font-semibold text-primary mb-0.5">
-                                {msg.agentName || 'Support Agent'}
-                              </p>
-                            )}
-                            <p className="whitespace-pre-wrap">{msg.content}</p>
-                            <div className={cn(
-                              "mt-1 flex items-center gap-1 text-[10px]",
-                              msg.isUser ? "justify-end text-primary-foreground/70" : "text-muted-foreground"
-                            )}>
-                              <span>{formatMessageTime(msg.timestamp)}</span>
-                              {msg.isUser && (
-                                msg.readAt ? (
-                                  <CheckCheck className="h-3 w-3" aria-label="Read" />
-                                ) : (
-                                  <Check className="h-3 w-3 opacity-70" aria-label="Sent" />
-                                )
+                {!conversation?.userName ? (
+                  <div className="p-6 space-y-4">
+                    <div>
+                      <h3 className="text-base font-semibold">Before we start, what is your name?</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Enter your name so we can keep this chat session separate and share it with our support team.
+                      </p>
+                    </div>
+                    <form onSubmit={handleNameSubmit} className="space-y-4">
+                      <Input
+                        value={nameInput}
+                        onChange={(e) => setNameInput(e.target.value)}
+                        placeholder="Your name"
+                      />
+                      <Button type="submit" className="w-full">
+                        Start chat
+                      </Button>
+                    </form>
+                  </div>
+                ) : (
+                  <>
+                    <ScrollArea className="h-[340px] p-4" ref={scrollRef}>
+                      <div className="space-y-4">
+                        {conversation?.messages.map((msg) => (
+                          <div key={msg.id}>
+                            <div
+                              className={cn(
+                                "flex",
+                                msg.isUser ? "justify-end" : "justify-start"
                               )}
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Quick Replies */}
-                        {!msg.isUser && msg.quickReplies && (
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {msg.quickReplies.map((reply) => (
-                              <button
-                                key={reply}
-                                onClick={() => handleQuickReply(reply)}
-                                className="text-xs bg-secondary hover:bg-secondary/80 text-secondary-foreground px-3 py-1.5 rounded-full transition-colors"
+                            >
+                              <div
+                                className={cn(
+                                  "max-w-[80%] rounded-2xl px-4 py-2 text-sm",
+                                  msg.isUser
+                                    ? "bg-primary text-primary-foreground rounded-br-md"
+                                    : msg.isAgent
+                                      ? "bg-accent text-accent-foreground border border-primary/30 rounded-bl-md"
+                                      : "bg-muted rounded-bl-md"
+                                )}
                               >
-                                {reply}
-                              </button>
-                            ))}
+                                {msg.isAgent && (
+                                  <p className="text-[11px] font-semibold text-primary mb-0.5">
+                                    {msg.agentName || 'Support Agent'}
+                                  </p>
+                                )}
+                                <p className="whitespace-pre-wrap">{msg.content}</p>
+                                <div className={cn(
+                                  "mt-1 flex items-center gap-1 text-[10px]",
+                                  msg.isUser ? "justify-end text-primary-foreground/70" : "text-muted-foreground"
+                                )}>
+                                  <span>{formatMessageTime(msg.timestamp)}</span>
+                                  {msg.isUser && (
+                                    msg.readAt ? (
+                                      <CheckCheck className="h-3 w-3" aria-label="Read" />
+                                    ) : (
+                                      <Check className="h-3 w-3 opacity-70" aria-label="Sent" />
+                                    )
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Quick Replies */}
+                            {!msg.isUser && msg.quickReplies && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {msg.quickReplies.map((reply) => (
+                                  <button
+                                    key={reply}
+                                    onClick={() => handleQuickReply(reply)}
+                                    className="text-xs bg-secondary hover:bg-secondary/80 text-secondary-foreground px-3 py-1.5 rounded-full transition-colors"
+                                  >
+                                    {reply}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        
+                        {/* Typing Indicator */}
+                        {isTyping && (
+                          <div className="flex justify-start">
+                            <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
+                              <div className="flex gap-1">
+                                <span className="w-2 h-2 bg-muted-foreground rounded-full typing-dot" />
+                                <span className="w-2 h-2 bg-muted-foreground rounded-full typing-dot" />
+                                <span className="w-2 h-2 bg-muted-foreground rounded-full typing-dot" />
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
-                    ))}
-                    
-                    {/* Typing Indicator */}
-                    {isTyping && (
-                      <div className="flex justify-start">
-                        <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
-                          <div className="flex gap-1">
-                            <span className="w-2 h-2 bg-muted-foreground rounded-full typing-dot" />
-                            <span className="w-2 h-2 bg-muted-foreground rounded-full typing-dot" />
-                            <span className="w-2 h-2 bg-muted-foreground rounded-full typing-dot" />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
+                    </ScrollArea>
 
-                {/* Input */}
-                <form onSubmit={handleSubmit} className="p-4 border-t border-border">
-                  <div className="flex gap-2">
-                    <Input
-                      ref={inputRef}
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      placeholder="Type your message..."
-                      className="flex-1"
-                    />
-                    <Button type="submit" size="icon" disabled={!message.trim()}>
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </form>
+                    {/* Input */}
+                    <form onSubmit={handleSubmit} className="p-4 border-t border-border">
+                      <div className="flex gap-2">
+                        <Input
+                          ref={inputRef}
+                          value={message}
+                          onChange={(e) => setMessage(e.target.value)}
+                          placeholder="Type your message..."
+                          className="flex-1"
+                        />
+                        <Button type="submit" size="icon" disabled={!message.trim()}>
+                          <Send className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </form>
+                  </>
+                )}
               </>
             )}
           </motion.div>

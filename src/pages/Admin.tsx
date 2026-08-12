@@ -103,7 +103,7 @@ export default function Admin() {
   const [activeChatKey, setActiveChatKey] = useState<string>(GENERAL_CHAT_KEY);
   const [agentMessage, setAgentMessage] = useState('');
   const conversation = conversations.find(
-    (c) => (c.trackingId || GENERAL_CHAT_KEY).toUpperCase() === activeChatKey.toUpperCase()
+    (c) => c.key?.toUpperCase() === activeChatKey.toUpperCase()
   ) || null;
 
   useEffect(() => {
@@ -122,6 +122,13 @@ export default function Admin() {
     }, 1500);
     return () => clearInterval(interval);
   }, [user]);
+
+  useEffect(() => {
+    if (!activeChatKey || conversations.length === 0) return;
+    if (!conversations.some((c) => c.key?.toUpperCase() === activeChatKey.toUpperCase())) {
+      setActiveChatKey(conversations[0].key ?? GENERAL_CHAT_KEY);
+    }
+  }, [conversations, activeChatKey]);
 
   // Mark the customer's messages in the open conversation as read
   useEffect(() => {
@@ -639,7 +646,12 @@ export default function Admin() {
                 {conversations.length > 0 && (
                   <div className="flex flex-wrap gap-2 pt-3">
                     {conversations.map((c) => {
-                      const key = (c.trackingId || GENERAL_CHAT_KEY).toUpperCase();
+                      const key = (c.key || GENERAL_CHAT_KEY).toUpperCase();
+                      const label = c.userName
+                        ? c.trackingId
+                          ? `${c.userName} • ${c.trackingId}`
+                          : c.userName
+                        : c.trackingId || 'General visitor';
                       return (
                         <button
                           key={key}
@@ -652,7 +664,7 @@ export default function Admin() {
                               : 'bg-background hover:bg-muted border-border'
                           )}
                         >
-                          {key === GENERAL_CHAT_KEY.toUpperCase() ? 'General visitor' : key}
+                          {label}
                           <span className="opacity-70"> • {c.messages.length}</span>
                           {c.messages.filter((m) => m.isUser && !m.readAt).length > 0 && (
                             <span className="ml-2 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">

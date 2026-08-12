@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
   TICKETS: 'movemate_tickets',
   CHAT: 'movemate_chat',
   CHATS: 'movemate_chats',
+  LAST_CHAT_KEY: 'movemate_chat_last_key',
 };
 
 // Generate unique ticket ID
@@ -54,9 +55,28 @@ export const GENERAL_CHAT_KEY = 'general';
 type ChatStore = Record<string, ChatConversation>;
 
 function normalizeKey(key?: string): string {
-  return (key || GENERAL_CHAT_KEY).toUpperCase() === GENERAL_CHAT_KEY.toUpperCase()
-    ? GENERAL_CHAT_KEY
-    : (key as string).toUpperCase();
+  if (!key) return GENERAL_CHAT_KEY;
+  const normalized = key.trim().toUpperCase();
+  if (normalized === GENERAL_CHAT_KEY) return GENERAL_CHAT_KEY;
+  if (normalized.startsWith('USER:')) return normalized;
+  return normalized;
+}
+
+export function getVisitorChatKey(userName: string): string {
+  const cleaned = userName.trim().replace(/\s+/g, ' ');
+  return normalizeKey(`USER:${cleaned}`);
+}
+
+export function getLastChatKey(): string | null {
+  return localStorage.getItem(STORAGE_KEYS.LAST_CHAT_KEY);
+}
+
+export function setLastChatKey(key: string): void {
+  localStorage.setItem(STORAGE_KEYS.LAST_CHAT_KEY, normalizeKey(key));
+}
+
+export function clearLastChatKey(): void {
+  localStorage.removeItem(STORAGE_KEYS.LAST_CHAT_KEY);
 }
 
 function readChatStore(): ChatStore {
@@ -92,19 +112,21 @@ function writeChatStore(store: ChatStore): void {
 }
 
 export function getChatConversation(key?: string): ChatConversation | null {
-  return readChatStore()[normalizeKey(key)] || null;
+  const storeKey = normalizeKey(key);
+  const conversation = readChatStore()[storeKey];
+  return conversation ? { ...conversation, key: storeKey } : null;
 }
 
 export function getAllChatConversations(): ChatConversation[] {
-  return Object.values(readChatStore()).sort(
-    (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-  );
+  return Object.entries(readChatStore())
+    .map(([key, conversation]) => ({ ...conversation, key }))
+    .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 }
 
 export function saveChatConversation(conversation: ChatConversation, key?: string): void {
   const store = readChatStore();
-  const storeKey = normalizeKey(key ?? conversation.trackingId);
-  store[storeKey] = { ...conversation, trackingId: conversation.trackingId };
+  const storeKey = normalizeKey(key ?? conversation.key ?? conversation.trackingId);
+  store[storeKey] = { ...conversation, trackingId: conversation.trackingId, key: storeKey };
   writeChatStore(store);
 }
 

@@ -44,8 +44,10 @@ export interface ChatConversation {
   lastMessageAt: string;
   agentHandled?: boolean;
   trackingId?: string;
+  userName?: string;
   userLastReadAt?: string;
   agentLastReadAt?: string;
+  key?: string;
 }
 
 export interface FAQItem {
