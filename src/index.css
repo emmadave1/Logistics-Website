@@ -219,53 +219,70 @@
   animation: movemate-truck-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes movemate-truck-pulse {
-  0%,
-  100% {
-    transform: scale(1);
+@keyframes movemateTruckPending {
+  0%, 100% {
     opacity: 1;
+    transform: scale(1);
   }
 
   50% {
-    transform: scale(1.15);
     opacity: 0.65;
+    transform: scale(1.05);
   }
 }
 
-.movemate-truck-active {
-  animation: movemate-truck-pulse 1.4s ease-in-out infinite;
+@keyframes movemateTruckProcessing {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.55;
+    transform: scale(1.08);
+  }
 }
 
-.movemate-truck-idle {
-  animation: none;
+@keyframes movemateTruckTransit {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.45;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes movemateTruckDelivery {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.5;
+    transform: scale(1.12);
+  }
+}
+
+.movemate-truck-pending {
+  animation: movemateTruckPending 2s ease-in-out infinite;
+}
+
+.movemate-truck-processing {
+  animation: movemateTruckProcessing 1.5s ease-in-out infinite;
+}
+
+.movemate-truck-transit {
+  animation: movemateTruckTransit 1.2s ease-in-out infinite;
+}
+
+.movemate-truck-delivery {
+  animation: movemateTruckDelivery 0.8s ease-in-out infinite;
 }
 
 .movemate-truck-delivered {
-  animation: movemate-truck-delivered 2s ease-in-out infinite;
-}
-
-@keyframes movemate-truck-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-
-  50% {
-    transform: scale(1.18);
-    opacity: 0.7;
-  }
-}
-
-@keyframes movemate-truck-delivered {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-
-  50% {
-    transform: scale(1.08);
-    opacity: 0.85;
-  }
+  opacity: 1;
 }

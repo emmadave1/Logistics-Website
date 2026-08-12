@@ -70,40 +70,71 @@ const pinIcon = (color: string) =>
   );
 
 const getTruckIcon = (status: ShipmentStatus) => {
-  const isDelivered = status === "delivered";
-  const isActive =
-    status === "processing" ||
-    status === "in_transit" ||
-    status === "out_for_delivery";
+  let color = "#2563eb";
+  let glow = "rgba(37,99,235,.18)";
+  let animationClass = "movemate-truck-active";
 
-  const animationClass = isActive
-    ? "movemate-truck-active"
-    : isDelivered
-      ? "movemate-truck-delivered"
-      : "movemate-truck-idle";
+  switch (status) {
+    case "pending":
+      color = "#f59e0b";
+      glow = "rgba(245,158,11,.22)";
+      animationClass = "movemate-truck-pending";
+      break;
+
+    case "processing":
+      color = "#f97316";
+      glow = "rgba(249,115,22,.22)";
+      animationClass = "movemate-truck-processing";
+      break;
+
+    case "in_transit":
+      color = "#2563eb";
+      glow = "rgba(37,99,235,.22)";
+      animationClass = "movemate-truck-transit";
+      break;
+
+    case "out_for_delivery":
+      color = "#8b5cf6";
+      glow = "rgba(139,92,246,.25)";
+      animationClass = "movemate-truck-delivery";
+      break;
+
+    case "delivered":
+      color = "#16a34a";
+      glow = "rgba(22,163,74,.22)";
+      animationClass = "movemate-truck-delivered";
+      break;
+  }
 
   const truckIcon = divIcon(
     `
-    <div style="
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      width:38px;
-      height:38px;
-      border-radius:50%;
-      background:#2563eb;
-      box-shadow:0 0 0 10px rgba(37,99,235,.18), 0 4px 12px rgba(0,0,0,.35);
-    ">
-      <span style="
-        font-size:20px;
-        line-height:1;
-      ">🚚</span>
-    </div>
-  `,
+      <div
+        class="${animationClass}"
+        style="
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          width:38px;
+          height:38px;
+          border-radius:50%;
+          background:${color};
+          box-shadow:
+            0 0 0 10px ${glow},
+            0 4px 12px rgba(0,0,0,.35);
+        "
+      >
+        <span style="
+          font-size:20px;
+          line-height:1;
+        ">🚚</span>
+      </div>
+    `,
     38,
   );
+
   return truckIcon;
 };
+
 interface ShipmentMapProps {
   shipment: Shipment;
   locationUpdates?: { id: string; description: string; createdAt: string }[];
